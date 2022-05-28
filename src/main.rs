@@ -1,3 +1,4 @@
+use memory::MemoryStorage;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -8,6 +9,8 @@ use trust_dns_server::store::in_memory::InMemoryAuthority;
 use trust_dns_server::{authority::Catalog, client::rr::Record, ServerFuture};
 
 mod handle;
+mod memory;
+mod storage;
 
 fn main() {
     pretty_env_logger::init();
@@ -72,7 +75,7 @@ fn main() {
         // .unwrap();
         // catalog.upsert(LowerName::new(&name), Box::new(Arc::new(authority)));
         //let mut fut = ServerFuture::new(catalog);
-        let handler = handle::DNS::new();
+        let handler = handle::DNS::new(MemoryStorage::new());
         let mut fut = ServerFuture::new(handler);
         fut.register_socket(udp_listener);
         fut.block_until_done().await.unwrap();

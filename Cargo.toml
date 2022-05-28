@@ -11,6 +11,8 @@ repository = "https://github.com/LeeSmet/cetus"
 
 [dependencies]
 trust-dns-server = { version = "0.21", features = ["dns-over-https-rustls", "dns-over-rustls", "dnssec-ring"] }
+# this is only here because the feature is not exposed through the server crate
+trust-dns-proto = { version = "0.21", features = ["serde-config"] }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 log = "0.4"
