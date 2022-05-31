@@ -3,8 +3,15 @@ use trust_dns_proto::rr::RecordType;
 use trust_dns_server::{client::rr::LowerName, proto::rr::Record};
 
 pub struct StoredRecord {
-    record: Record,
+    pub record: Record,
     // TODO
+}
+
+impl StoredRecord {
+    /// Get access to the actual record.
+    pub fn as_record(&self) -> &Record {
+        &self.record
+    }
 }
 
 #[async_trait::async_trait]

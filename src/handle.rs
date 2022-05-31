@@ -1,9 +1,12 @@
-use std::sync::{
-    atomic::{AtomicPtr, Ordering},
-    Arc,
+use std::{
+    str::FromStr,
+    sync::{
+        atomic::{AtomicPtr, Ordering},
+        Arc,
+    },
 };
 
-use log::{debug, trace, warn};
+use log::{debug, error, trace, warn};
 use trust_dns_server::{
     authority::{MessageResponse, MessageResponseBuilder},
     client::{
@@ -31,7 +34,10 @@ pub struct DNS<S> {
 
 impl<S> DNS<S> {
     pub fn new(storage: S) -> Self {
-        let zones = Arc::new(Vec::<LowerName>::new());
+        let mut zones = Arc::new(Vec::<LowerName>::new());
+        Arc::get_mut(&mut zones)
+            .unwrap()
+            .push(LowerName::from_str("ava.tf").unwrap());
         let zone_list = AtomicPtr::new(Arc::into_raw(zones) as *mut _);
         DNS { zone_list, storage }
     }
@@ -77,7 +83,7 @@ where
     async fn query<R: trust_dns_server::server::ResponseHandler>(
         &self,
         request: &trust_dns_server::server::Request,
-        response_handle: R,
+        mut response_handle: R,
     ) -> ResponseInfo {
         let query = request.query();
 
@@ -88,7 +94,51 @@ where
             return self.reply_not_authorized(request, response_handle).await;
         }
 
-        unimplemented!()
+        // Now get potential records
+        trace!(
+            "Fetching records for {} {}",
+            query.name(),
+            query.query_type()
+        );
+        let records = match self
+            .storage
+            .lookup_records(query.name(), query.query_type())
+            .await
+        {
+            Err(e) => {
+                error!(
+                    "Failed to fetch records for {} of type {}: {}",
+                    query.name(),
+                    query.query_type(),
+                    e
+                );
+                return self.reply_server_failure(request, response_handle).await;
+            }
+            Ok(records) => records,
+        };
+
+        let mut response_builder = MessageResponseBuilder::from_message_request(request);
+        if let Some(edns) = request.edns() {
+            response_builder.edns(edns.clone());
+        };
+        // TODO: if there are no records of the given type return SOA?
+        let msg = response_builder.build(
+            request.header().clone(),
+            records.iter().map(|sr| sr.as_record()),
+            [],
+            [],
+            [],
+        );
+        match response_handle.send_response(msg).await {
+            Ok(info) => info,
+            Err(ioe) => {
+                warn!(
+                    "Failed to send reply to message with response type: {}",
+                    ioe
+                );
+                ResponseInfo::from(request.header().clone())
+            }
+        }
     }
 
     /// Gets the authority zone for the query if it is present.
@@ -100,6 +150,7 @@ where
         debug!("zone ref count {}", Arc::strong_count(&zones));
         for zone in zones.iter() {
             if zone.zone_of(name) {
+                debug!("query {} in known zone {}", name, zone);
                 return Some(zone.clone());
             }
         }
@@ -154,6 +205,27 @@ where
     ) -> ResponseInfo {
         let response_builder = MessageResponseBuilder::from_message_request(request);
         let msg = response_builder.error_msg(request.header(), ResponseCode::NotAuth);
+        return match response_handle.send_response(msg).await {
+            Ok(info) => info,
+            Err(ioe) => {
+                warn!(
+                    "Failed to send reply to message with response type: {}",
+                    ioe
+                );
+                ResponseInfo::from(request.header().clone())
+            }
+        };
+    }
+
+    /// Send a generic "Server Failure" response. If sending the response fails, a new
+    /// [ResponseInfo] object is created from a clone of the request header.
+    async fn reply_server_failure<R: trust_dns_server::server::ResponseHandler>(
+        &self,
+        request: &trust_dns_server::server::Request,
+        mut response_handle: R,
+    ) -> ResponseInfo {
+        let response_builder = MessageResponseBuilder::from_message_request(request);
+        let msg = response_builder.error_msg(request.header(), ResponseCode::ServFail);
         return match response_handle.send_response(msg).await {
             Ok(info) => info,
             Err(ioe) => {
