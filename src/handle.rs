@@ -7,6 +7,7 @@ use std::{
 };
 
 use log::{debug, error, trace, warn};
+use trust_dns_proto::rr::DNSClass;
 use trust_dns_server::{
     authority::{MessageResponse, MessageResponseBuilder},
     client::{
@@ -77,9 +78,11 @@ where
 {
     /// Handle a request query. This function does the following:
     ///
-    /// 1. Check the zone cache to see if the request is a (child of) a known zone, if it is not
+    /// 1. Check if the class is `IN`. We only serve these (for now), outright reject other
+    ///    classes.
+    /// 2. Check the zone cache to see if the request is a (child of) a known zone, if it is not
     ///    outright reject the query.
-    /// 2. Look up the record(s) in the database.
+    /// 3. Look up the record(s) in the database.
     ///
     /// The response is then attempted to be served to the client.
     async fn query<R: trust_dns_server::server::ResponseHandler>(
@@ -89,7 +92,15 @@ where
     ) -> ResponseInfo {
         let query = request.query();
 
-        // First check if we are authorized for the zone.
+        // First verify this is the IN class
+        if query.query_class() != DNSClass::IN {
+            // Refuse to answer anything for these
+            return self
+                .reply_error(request, response_handle, ResponseCode::Refused)
+                .await;
+        }
+
+        // Next check if we are authorized for the zone.
         let zone = self.query_zone(query);
         if zone.is_none() {
             // We aren't an authority for this query.
