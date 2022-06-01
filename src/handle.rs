@@ -34,10 +34,7 @@ pub struct DNS<S> {
 
 impl<S> DNS<S> {
     pub fn new(storage: S) -> Self {
-        let mut zones = Arc::new(Vec::<LowerName>::new());
-        Arc::get_mut(&mut zones)
-            .unwrap()
-            .push(LowerName::from_str("ava.tf").unwrap());
+        let zones = Arc::new(Vec::<LowerName>::new());
         let zone_list = AtomicPtr::new(Arc::into_raw(zones) as *mut _);
         DNS { zone_list, storage }
     }
