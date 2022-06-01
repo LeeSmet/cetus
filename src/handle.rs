@@ -57,14 +57,19 @@ where
         match request.message_type() {
             MessageType::Query => {}
             MessageType::Response => {
-                return self.reply_not_implemented(request, response_handle).await;
+                return self
+                    .reply_error(request, response_handle, ResponseCode::NotImp)
+                    .await;
             }
         };
 
         match request.op_code() {
             OpCode::Query => self.query(request, response_handle).await,
-            // TODO: proper not impl
-            OpCode::Status | OpCode::Notify | OpCode::Update => unimplemented!(),
+            OpCode::Status | OpCode::Notify | OpCode::Update => {
+                return self
+                    .reply_error(request, response_handle, ResponseCode::NotImp)
+                    .await;
+            }
         }
     }
 }
@@ -91,7 +96,9 @@ where
         let zone = self.query_zone(query);
         if zone.is_none() {
             // We aren't an authority for this query.
-            return self.reply_not_authorized(request, response_handle).await;
+            return self
+                .reply_error(request, response_handle, ResponseCode::NXDomain)
+                .await;
         }
 
         // Now get potential records
@@ -112,7 +119,9 @@ where
                     query.query_type(),
                     e
                 );
-                return self.reply_server_failure(request, response_handle).await;
+                return self
+                    .reply_error(request, response_handle, ResponseCode::ServFail)
+                    .await;
             }
             Ok(records) => records,
         };
@@ -175,63 +184,22 @@ where
         }
     }
 
-    /// Send a generic "Not Implemented" response. If sending the response fails, a new
-    /// [ResponseInfo] object is created from a clone of the request header.
-    async fn reply_not_implemented<R: trust_dns_server::server::ResponseHandler>(
+    /// Send a generic error response. If sending the response fails, a new [ResponseInfo] object is
+    /// created from a clone of the request header.
+    async fn reply_error<R: trust_dns_server::server::ResponseHandler>(
         &self,
         request: &trust_dns_server::server::Request,
         mut response_handle: R,
+        code: ResponseCode,
     ) -> ResponseInfo {
         let response_builder = MessageResponseBuilder::from_message_request(request);
-        let msg = response_builder.error_msg(request.header(), ResponseCode::NotImp);
+        let msg = response_builder.error_msg(request.header(), code);
         return match response_handle.send_response(msg).await {
             Ok(info) => info,
             Err(ioe) => {
                 warn!(
-                    "Failed to send reply to message with response type: {}",
-                    ioe
-                );
-                ResponseInfo::from(request.header().clone())
-            }
-        };
-    }
-
-    /// Send a generic "Not Authorized" response. If sending the response fails, a new
-    /// [ResponseInfo] object is created from a clone of the request header.
-    async fn reply_not_authorized<R: trust_dns_server::server::ResponseHandler>(
-        &self,
-        request: &trust_dns_server::server::Request,
-        mut response_handle: R,
-    ) -> ResponseInfo {
-        let response_builder = MessageResponseBuilder::from_message_request(request);
-        let msg = response_builder.error_msg(request.header(), ResponseCode::NotAuth);
-        return match response_handle.send_response(msg).await {
-            Ok(info) => info,
-            Err(ioe) => {
-                warn!(
-                    "Failed to send reply to message with response type: {}",
-                    ioe
-                );
-                ResponseInfo::from(request.header().clone())
-            }
-        };
-    }
-
-    /// Send a generic "Server Failure" response. If sending the response fails, a new
-    /// [ResponseInfo] object is created from a clone of the request header.
-    async fn reply_server_failure<R: trust_dns_server::server::ResponseHandler>(
-        &self,
-        request: &trust_dns_server::server::Request,
-        mut response_handle: R,
-    ) -> ResponseInfo {
-        let response_builder = MessageResponseBuilder::from_message_request(request);
-        let msg = response_builder.error_msg(request.header(), ResponseCode::ServFail);
-        return match response_handle.send_response(msg).await {
-            Ok(info) => info,
-            Err(ioe) => {
-                warn!(
-                    "Failed to send reply to message with response type: {}",
-                    ioe
+                    "Failed to send reply to message with response code {}: {}",
+                    code, ioe
                 );
                 ResponseInfo::from(request.header().clone())
             }
