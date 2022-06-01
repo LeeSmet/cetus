@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use trust_dns_proto::rr::RecordType;
 use trust_dns_server::{client::rr::LowerName, proto::rr::Record};
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct StoredRecord {
     pub record: Record,
     // TODO
