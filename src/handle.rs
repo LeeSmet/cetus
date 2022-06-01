@@ -103,9 +103,9 @@ where
         // Next check if we are authorized for the zone.
         let zone = self.query_zone(query);
         if zone.is_none() {
-            // We aren't an authority for this query.
+            // We aren't an authority for this query, therefore it is refused.
             return self
-                .reply_error(request, response_handle, ResponseCode::NXDomain)
+                .reply_error(request, response_handle, ResponseCode::Refused)
                 .await;
         }
 
