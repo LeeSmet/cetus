@@ -1,5 +1,5 @@
 use std::{
-    str::FromStr,
+    collections::HashMap,
     sync::{
         atomic::{AtomicPtr, Ordering},
         Arc,
@@ -7,12 +7,12 @@ use std::{
 };
 
 use log::{debug, error, trace, warn};
-use trust_dns_proto::rr::DNSClass;
+use trust_dns_proto::rr::{rdata::SOA, DNSClass};
 use trust_dns_server::{
-    authority::{MessageResponse, MessageResponseBuilder},
+    authority::MessageResponseBuilder,
     client::{
         op::{LowerQuery, MessageType, OpCode, ResponseCode},
-        rr::LowerName,
+        rr::{LowerName, Name, RData},
     },
     server::{RequestHandler, ResponseInfo},
 };
@@ -24,7 +24,7 @@ use crate::storage::Storage;
 /// old list with the new list. Note that the [Arc] is not part of the type signature, for more
 /// info see [Arc::into_raw] and [Arc::from_raw].
 // TODO: vetting
-type ZoneCache = AtomicPtr<Vec<LowerName>>;
+type ZoneCache = AtomicPtr<HashMap<LowerName, SOA>>;
 
 pub struct DNS<S> {
     // list of all known zones, this allows us to verify if we are an authority without hitting the
@@ -33,11 +33,38 @@ pub struct DNS<S> {
     storage: S,
 }
 
-impl<S> DNS<S> {
+impl<S> DNS<S>
+where
+    S: Storage + Send + Sync + Unpin + 'static,
+{
+    /// Create a new DNS handler with the given [`Storage`].
     pub fn new(storage: S) -> Self {
-        let zones = Arc::new(Vec::<LowerName>::new());
+        let zones = Arc::new(HashMap::<LowerName, SOA>::new());
         let zone_list = AtomicPtr::new(Arc::into_raw(zones) as *mut _);
         DNS { zone_list, storage }
+    }
+
+    /// Load all known zones from storage and cache them. This removes previously stored zones.
+    pub async fn load_zones(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Create the new zone mapping;
+        let zones = self.storage.zones().await?;
+        let mut zone_map = HashMap::new();
+        for (zone, soa) in zones {
+            zone_map.insert(zone, soa);
+        }
+        debug!("Loaded {} zones in zone cache", zone_map.len());
+        let zone_map = Arc::new(zone_map);
+        // Get the pointer to store
+        let ptr = Arc::into_raw(zone_map) as *mut _;
+        let old_ptr = self.zone_list.swap(ptr, Ordering::AcqRel);
+
+        // Create the arc from the raw pointer. Don't increment refcount first. This will trigger
+        // proper cleanup of the Arc and it's associated data once the last one goes out of scope.
+        // SAFETY: this is safe since regular loads of the pointer always increment refcount first,
+        // so the pointer is always valid.
+        unsafe { Arc::from_raw(old_ptr) };
+
+        Ok(())
     }
 }
 
@@ -134,18 +161,48 @@ where
             Ok(records) => records,
         };
 
+        // Set edns according to the request.
         let mut response_builder = MessageResponseBuilder::from_message_request(request);
         if let Some(edns) = request.edns() {
             response_builder.edns(edns.clone());
         };
-        // TODO: if there are no records of the given type return SOA?
+
+        // Set NXDOMAIN if there domain is not found.
+        let mut header = *request.header();
+        if records.is_none() {
+            header.set_response_code(ResponseCode::NXDomain);
+        };
+
+        let soa_records = if records.is_none() {
+            // this unwrap is safe because we already checked that zone is not none.
+            let (zone_name, soa) = zone.unwrap();
+            let soa_rdata = RData::SOA(soa);
+            vec![trust_dns_server::proto::rr::Record::from_rdata(
+                Name::from(zone_name),
+                // TODO: SOA TTL
+                300,
+                soa_rdata,
+            )]
+        } else {
+            vec![]
+        };
+
+        // TODO: lifetime workaround;
+        let empty_vec = vec![];
         let msg = response_builder.build(
-            request.header().clone(),
-            records.iter().map(|sr| sr.as_record()),
+            header,
+            if let Some(ref records) = records {
+                records
+            } else {
+                &empty_vec
+            }
+            .iter()
+            .map(|sr| sr.as_record()),
             [],
-            [],
+            &soa_records,
             [],
         );
+
         match response_handle.send_response(msg).await {
             Ok(info) => info,
             Err(ioe) => {
@@ -161,21 +218,21 @@ where
     /// Gets the authority zone for the query if it is present.
     ///
     /// TODO: Currently this just returns the first match, but does not account for zone in zones.
-    fn query_zone(&self, query: &LowerQuery) -> Option<LowerName> {
+    fn query_zone(&self, query: &LowerQuery) -> Option<(LowerName, SOA)> {
         let name = query.name();
         let zones = self.zone_list();
         debug!("zone ref count {}", Arc::strong_count(&zones));
-        for zone in zones.iter() {
+        for (zone, soa) in zones.iter() {
             if zone.zone_of(name) {
                 debug!("query {} in known zone {}", name, zone);
-                return Some(zone.clone());
+                return Some((zone.clone(), soa.clone()));
             }
         }
         None
     }
 
     /// Get the current zone list.
-    fn zone_list(&self) -> Arc<Vec<LowerName>> {
+    fn zone_list(&self) -> Arc<HashMap<LowerName, SOA>> {
         trace!("Loading zone cache");
 
         let ptr = self.zone_list.load(Ordering::Relaxed);

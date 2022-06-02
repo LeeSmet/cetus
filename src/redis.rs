@@ -1,5 +1,6 @@
 use redis_cluster_async::{redis::Cmd, Client};
 use std::net::SocketAddr;
+use trust_dns_proto::rr::rdata::SOA;
 
 use crate::storage::Storage;
 
@@ -33,7 +34,7 @@ impl Storage for RedisClusterClient {
     async fn zones(
         &self,
     ) -> Result<
-        Vec<trust_dns_server::client::rr::LowerName>,
+        Vec<(trust_dns_server::client::rr::LowerName, SOA)>,
         Box<dyn std::error::Error + Send + Sync>,
     > {
         unimplemented!();
@@ -43,7 +44,8 @@ impl Storage for RedisClusterClient {
         &self,
         name: &trust_dns_server::client::rr::LowerName,
         rtype: trust_dns_proto::rr::RecordType,
-    ) -> Result<Vec<crate::storage::StoredRecord>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Option<Vec<crate::storage::StoredRecord>>, Box<dyn std::error::Error + Send + Sync>>
+    {
         unimplemented!();
     }
 }
