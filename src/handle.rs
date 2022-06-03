@@ -26,50 +26,24 @@ use crate::storage::Storage;
 // TODO: vetting
 type ZoneCache = AtomicPtr<HashMap<LowerName, SOA>>;
 
-pub struct DNS<S> {
+pub struct DnsHandler<S> {
     // list of all known zones, this allows us to verify if we are an authority without hitting the
     // database.
     zone_list: ZoneCache,
     storage: S,
 }
 
-impl<S> DNS<S>
-where
-    S: Storage + Send + Sync + Unpin + 'static,
-{
+impl<S> DnsHandler<S> {
     /// Create a new DNS handler with the given [`Storage`].
     pub fn new(storage: S) -> Self {
         let zones = Arc::new(HashMap::<LowerName, SOA>::new());
         let zone_list = AtomicPtr::new(Arc::into_raw(zones) as *mut _);
-        DNS { zone_list, storage }
-    }
-
-    /// Load all known zones from storage and cache them. This removes previously stored zones.
-    pub async fn load_zones(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Create the new zone mapping;
-        let zones = self.storage.zones().await?;
-        let mut zone_map = HashMap::new();
-        for (zone, soa) in zones {
-            zone_map.insert(zone, soa);
-        }
-        info!("Loaded {} zones in zone cache", zone_map.len());
-        let zone_map = Arc::new(zone_map);
-        // Get the pointer to store
-        let ptr = Arc::into_raw(zone_map) as *mut _;
-        let old_ptr = self.zone_list.swap(ptr, Ordering::AcqRel);
-
-        // Create the arc from the raw pointer. Don't increment refcount first. This will trigger
-        // proper cleanup of the Arc and it's associated data once the last one goes out of scope.
-        // SAFETY: this is safe since regular loads of the pointer always increment refcount first,
-        // so the pointer is always valid.
-        unsafe { Arc::from_raw(old_ptr) };
-
-        Ok(())
+        DnsHandler { zone_list, storage }
     }
 }
 
 #[async_trait::async_trait]
-impl<S> RequestHandler for DNS<S>
+impl<S> RequestHandler for DnsHandler<S>
 where
     S: Storage + Send + Sync + Unpin + 'static,
 {
@@ -99,7 +73,7 @@ where
     }
 }
 
-impl<S> DNS<S>
+impl<S> DnsHandler<S>
 where
     S: Storage + Send + Sync + Unpin,
 {
@@ -217,9 +191,31 @@ where
                     "Failed to send reply to message with response type: {}",
                     ioe
                 );
-                ResponseInfo::from(request.header().clone())
+                ResponseInfo::from(*request.header())
             }
         }
+    }
+
+    /// Send a generic error response. If sending the response fails, a new [ResponseInfo] object is
+    /// created from a clone of the request header.
+    async fn reply_error<R: trust_dns_server::server::ResponseHandler>(
+        &self,
+        request: &trust_dns_server::server::Request,
+        mut response_handle: R,
+        code: ResponseCode,
+    ) -> ResponseInfo {
+        let response_builder = MessageResponseBuilder::from_message_request(request);
+        let msg = response_builder.error_msg(request.header(), code);
+        return match response_handle.send_response(msg).await {
+            Ok(info) => info,
+            Err(ioe) => {
+                warn!(
+                    "Failed to send reply to message with response code {}: {}",
+                    code, ioe
+                );
+                ResponseInfo::from(*request.header())
+            }
+        };
     }
 
     /// Gets the authority zone for the query if it is present.
@@ -256,25 +252,26 @@ where
         }
     }
 
-    /// Send a generic error response. If sending the response fails, a new [ResponseInfo] object is
-    /// created from a clone of the request header.
-    async fn reply_error<R: trust_dns_server::server::ResponseHandler>(
-        &self,
-        request: &trust_dns_server::server::Request,
-        mut response_handle: R,
-        code: ResponseCode,
-    ) -> ResponseInfo {
-        let response_builder = MessageResponseBuilder::from_message_request(request);
-        let msg = response_builder.error_msg(request.header(), code);
-        return match response_handle.send_response(msg).await {
-            Ok(info) => info,
-            Err(ioe) => {
-                warn!(
-                    "Failed to send reply to message with response code {}: {}",
-                    code, ioe
-                );
-                ResponseInfo::from(request.header().clone())
-            }
-        };
+    /// Load all known zones from storage and cache them. This removes previously stored zones.
+    pub async fn load_zones(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Create the new zone mapping;
+        let zones = self.storage.zones().await?;
+        let mut zone_map = HashMap::new();
+        for (zone, soa) in zones {
+            zone_map.insert(zone, soa);
+        }
+        info!("Loaded {} zones in zone cache", zone_map.len());
+        let zone_map = Arc::new(zone_map);
+        // Get the pointer to store
+        let ptr = Arc::into_raw(zone_map) as *mut _;
+        let old_ptr = self.zone_list.swap(ptr, Ordering::AcqRel);
+
+        // Create the arc from the raw pointer. Don't increment refcount first. This will trigger
+        // proper cleanup of the Arc and it's associated data once the last one goes out of scope.
+        // SAFETY: this is safe since regular loads of the pointer always increment refcount first,
+        // so the pointer is always valid.
+        unsafe { Arc::from_raw(old_ptr) };
+
+        Ok(())
     }
 }

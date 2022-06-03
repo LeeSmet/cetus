@@ -22,7 +22,7 @@ fn main() {
         base_path.push("dns_storage");
         let storage = fs::FSStorage::new(base_path);
         // let handler = handle::DNS::new(MemoryStorage::new());
-        let handler = handle::DNS::new(storage);
+        let handler = handle::DnsHandler::new(storage);
         handler.load_zones().await.expect("can load zones");
         let mut fut = ServerFuture::new(handler);
         fut.register_socket(udp_listener);
