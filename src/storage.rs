@@ -14,6 +14,11 @@ impl StoredRecord {
     pub fn as_record(&self) -> &Record {
         &self.record
     }
+
+    /// Get mutable access to the actual record.
+    pub fn as_mut_record(&mut self) -> &mut Record {
+        &mut self.record
+    }
 }
 
 #[async_trait::async_trait]
@@ -21,6 +26,7 @@ pub trait Storage {
     /// Get a list of all zones served by the server. These are only the names - not the actual SOA
     /// records.
     async fn zones(&self) -> Result<Vec<(LowerName, SOA)>, Box<dyn Error + Send + Sync>>;
+
     /// Look up the records for a fqdn in the data store. It is possible that no records exist for
     /// the given name of the given type. It is also possible that more than 1 record exists for
     /// the given name and type.
@@ -33,6 +39,7 @@ pub trait Storage {
     async fn lookup_records(
         &self,
         name: &LowerName,
+        zone: &LowerName,
         rtype: RecordType,
     ) -> Result<Option<Vec<StoredRecord>>, Box<dyn Error + Send + Sync>>;
 }

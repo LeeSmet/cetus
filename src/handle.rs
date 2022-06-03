@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use log::{debug, error, trace, warn};
+use log::{debug, error, info, trace, warn};
 use trust_dns_proto::rr::{rdata::SOA, DNSClass};
 use trust_dns_server::{
     authority::MessageResponseBuilder,
@@ -52,7 +52,7 @@ where
         for (zone, soa) in zones {
             zone_map.insert(zone, soa);
         }
-        debug!("Loaded {} zones in zone cache", zone_map.len());
+        info!("Loaded {} zones in zone cache", zone_map.len());
         let zone_map = Arc::new(zone_map);
         // Get the pointer to store
         let ptr = Arc::into_raw(zone_map) as *mut _;
@@ -135,6 +135,8 @@ where
                 .reply_error(request, response_handle, ResponseCode::Refused)
                 .await;
         }
+        // unwrap is safe as we just checked the none case and returned.
+        let (zone_name, soa) = zone.unwrap();
 
         // Now get potential records
         trace!(
@@ -142,9 +144,9 @@ where
             query.name(),
             query.query_type()
         );
-        let records = match self
+        let mut records = match self
             .storage
-            .lookup_records(query.name(), query.query_type())
+            .lookup_records(query.name(), &zone_name, query.query_type())
             .await
         {
             Err(e) => {
@@ -175,7 +177,6 @@ where
 
         let soa_records = if records.is_none() {
             // this unwrap is safe because we already checked that zone is not none.
-            let (zone_name, soa) = zone.unwrap();
             let soa_rdata = RData::SOA(soa);
             vec![trust_dns_server::proto::rr::Record::from_rdata(
                 Name::from(zone_name),
@@ -188,16 +189,22 @@ where
         };
 
         // TODO: lifetime workaround;
-        let empty_vec = vec![];
+        let mut empty_vec = vec![];
         let msg = response_builder.build(
             header,
-            if let Some(ref records) = records {
+            if let Some(ref mut records) = records {
                 records
             } else {
-                &empty_vec
+                &mut empty_vec
             }
-            .iter()
-            .map(|sr| sr.as_record()),
+            .iter_mut()
+            .map(|sr| {
+                {
+                    // Preserve original casing in request.
+                    sr.as_mut_record().set_name(query.original().name().clone());
+                }
+                sr.as_record()
+            }),
             [],
             &soa_records,
             [],
@@ -221,7 +228,7 @@ where
     fn query_zone(&self, query: &LowerQuery) -> Option<(LowerName, SOA)> {
         let name = query.name();
         let zones = self.zone_list();
-        debug!("zone ref count {}", Arc::strong_count(&zones));
+        trace!("zone cache ref count {}", Arc::strong_count(&zones));
         for (zone, soa) in zones.iter() {
             if zone.zone_of(name) {
                 debug!("query {} in known zone {}", name, zone);

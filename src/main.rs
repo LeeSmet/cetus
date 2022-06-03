@@ -1,5 +1,6 @@
 use memory::MemoryStorage;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
@@ -8,6 +9,7 @@ use trust_dns_server::client::rr::{LowerName, Name, RecordSet, RrKey};
 use trust_dns_server::store::in_memory::InMemoryAuthority;
 use trust_dns_server::{authority::Catalog, client::rr::Record, ServerFuture};
 
+mod fs;
 mod handle;
 mod memory;
 mod storage;
@@ -75,7 +77,12 @@ fn main() {
         // .unwrap();
         // catalog.upsert(LowerName::new(&name), Box::new(Arc::new(authority)));
         //let mut fut = ServerFuture::new(catalog);
-        let handler = handle::DNS::new(MemoryStorage::new());
+        let mut base_path = PathBuf::new();
+        base_path.push("dns_storage");
+        let storage = fs::FSStorage::new(base_path);
+        // let handler = handle::DNS::new(MemoryStorage::new());
+        let handler = handle::DNS::new(storage);
+        handler.load_zones().await.expect("can load zones");
         let mut fut = ServerFuture::new(handler);
         fut.register_socket(udp_listener);
         fut.block_until_done().await.unwrap();

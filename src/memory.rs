@@ -24,6 +24,7 @@ impl Storage for MemoryStorage {
     async fn lookup_records(
         &self,
         name: &trust_dns_server::client::rr::LowerName,
+        zone: &trust_dns_server::client::rr::LowerName,
         rtype: trust_dns_proto::rr::RecordType,
     ) -> Result<Option<Vec<crate::storage::StoredRecord>>, Box<dyn std::error::Error + Send + Sync>>
     {
