@@ -1,7 +1,6 @@
 use log::{debug, error, trace};
 use std::{path::PathBuf, str::FromStr};
 use tokio::fs;
-use trust_dns_proto::rr::rdata::SOA;
 use trust_dns_server::client::rr::LowerName;
 
 use crate::storage::Storage;
@@ -19,9 +18,7 @@ impl FSStorage {
 
 #[async_trait::async_trait]
 impl Storage for FSStorage {
-    async fn zones(
-        &self,
-    ) -> Result<Vec<(LowerName, SOA)>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn zones(&self) -> Result<Vec<LowerName>, Box<dyn std::error::Error + Send + Sync>> {
         trace!("Reading zones from {:?}", self.base);
         let mut zones = Vec::new();
         let mut dir_reader = fs::read_dir(&self.base).await?;
@@ -38,14 +35,10 @@ impl Storage for FSStorage {
                     continue;
                 }
             };
-            let mut soa_path = self.base.clone();
-            soa_path.push(&name);
-            soa_path.push("SOA");
 
             let name = LowerName::from_str(&name)?;
 
-            let soa: SOA = serde_json::from_slice(&fs::read(&soa_path).await?)?;
-            zones.push((name, soa));
+            zones.push(name);
         }
 
         debug!("Found {} zones in filesystem", zones.len());

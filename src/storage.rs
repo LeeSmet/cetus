@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use trust_dns_proto::rr::{rdata::SOA, RecordType};
+use trust_dns_proto::rr::RecordType;
 use trust_dns_server::{client::rr::LowerName, proto::rr::Record};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -25,7 +25,7 @@ impl StoredRecord {
 pub trait Storage {
     /// Get a list of all zones served by the server. These are only the names - not the actual SOA
     /// records.
-    async fn zones(&self) -> Result<Vec<(LowerName, SOA)>, Box<dyn Error + Send + Sync>>;
+    async fn zones(&self) -> Result<Vec<LowerName>, Box<dyn Error + Send + Sync>>;
 
     /// Look up the records for a fqdn in the data store. It is possible that no records exist for
     /// the given name of the given type. It is also possible that more than 1 record exists for

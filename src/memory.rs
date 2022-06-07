@@ -1,5 +1,3 @@
-use trust_dns_proto::rr::rdata::SOA;
-
 use crate::storage::Storage;
 
 pub struct MemoryStorage {}
@@ -15,7 +13,7 @@ impl Storage for MemoryStorage {
     async fn zones(
         &self,
     ) -> Result<
-        Vec<(trust_dns_server::client::rr::LowerName, SOA)>,
+        Vec<trust_dns_server::client::rr::LowerName>,
         Box<dyn std::error::Error + Send + Sync>,
     > {
         unimplemented!();

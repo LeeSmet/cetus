@@ -34,7 +34,7 @@ impl Storage for RedisClusterClient {
     async fn zones(
         &self,
     ) -> Result<
-        Vec<(trust_dns_server::client::rr::LowerName, SOA)>,
+        Vec<trust_dns_server::client::rr::LowerName>,
         Box<dyn std::error::Error + Send + Sync>,
     > {
         unimplemented!();
