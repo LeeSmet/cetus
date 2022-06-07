@@ -21,3 +21,6 @@ redis = { version = "0.21", features = ["cluster", "tokio-comp", "connection-man
 redis_cluster_async = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+prometheus = { version = "0.13", features = ["process"] }
+chashmap = "2.2"
+axum = { version = "0.5", features = ["http2"] }

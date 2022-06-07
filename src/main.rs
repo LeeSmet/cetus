@@ -5,6 +5,7 @@ use trust_dns_server::ServerFuture;
 mod fs;
 mod handle;
 mod memory;
+mod metrics;
 mod storage;
 
 fn main() {
@@ -22,7 +23,7 @@ fn main() {
         base_path.push("dns_storage");
         let storage = fs::FSStorage::new(base_path);
         // let handler = handle::DNS::new(MemoryStorage::new());
-        let handler = handle::DnsHandler::new(storage);
+        let handler = handle::DnsHandler::new("cetus primary".to_string(), storage);
         handler.load_zones().await.expect("can load zones");
         let mut fut = ServerFuture::new(handler);
         fut.register_socket(udp_listener);

@@ -14,7 +14,7 @@ use trust_dns_server::{
     server::{RequestHandler, ResponseInfo},
 };
 
-use crate::storage::Storage;
+use crate::{metrics::Metrics, storage::Storage};
 
 /// We don't expect frequent updates of the Zone list, so use an [AtomicPtr] here. The idea is that
 /// we will create a new [Arc] if there is a new list, and an atomic operation is used to swap the
@@ -28,14 +28,31 @@ pub struct DnsHandler<S> {
     // database.
     zone_list: ZoneCache,
     storage: S,
+    metrics: Metrics,
 }
 
 impl<S> DnsHandler<S> {
     /// Create a new DNS handler with the given [`Storage`].
-    pub fn new(storage: S) -> Self {
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if called outside the context of a `[tokio]` runtime.
+    pub fn new(instance_name: String, storage: S) -> Self {
+        // TODO: inject metric addr
+        let metric_addr = "[::]:9000"
+            .parse()
+            .expect("Can parse static socket address");
         let zones = Arc::new(Vec::<LowerName>::new());
         let zone_list = AtomicPtr::new(Arc::into_raw(zones) as *mut _);
-        DnsHandler { zone_list, storage }
+        let metrics = Metrics::new(instance_name);
+        let metric_server = metrics.server_future(metric_addr);
+        // Start the metric server forever
+        tokio::spawn(metric_server);
+        DnsHandler {
+            zone_list,
+            storage,
+            metrics,
+        }
     }
 }
 
@@ -118,6 +135,7 @@ where
         zone_name: &LowerName,
         mut response_handle: R,
     ) -> ResponseInfo {
+        self.metrics.increment_zone_query_count(zone_name);
         let query = request.query();
 
         trace!("Getting zone SOA for {}", zone_name);
@@ -128,6 +146,8 @@ where
         {
             Err(e) => {
                 error!("Failed to fetch SOA record for {}: {}", zone_name, e);
+                self.metrics
+                    .increment_response_code(zone_name, ResponseCode::ServFail);
                 return self
                     .reply_error(request, response_handle, ResponseCode::ServFail)
                     .await;
@@ -154,6 +174,8 @@ where
                     query.query_type(),
                     e
                 );
+                self.metrics
+                    .increment_response_code(zone_name, ResponseCode::ServFail);
                 return self
                     .reply_error(request, response_handle, ResponseCode::ServFail)
                     .await;
@@ -204,6 +226,8 @@ where
             [],
         );
 
+        self.metrics
+            .increment_response_code(zone_name, msg.header().response_code());
         match response_handle.send_response(msg).await {
             Ok(info) => info,
             Err(ioe) => {
@@ -276,8 +300,15 @@ where
     pub async fn load_zones(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Create the new zone mapping;
         let zones = self.storage.zones().await?;
+
+        // TODO: properly add and remove zones.
+        for zone in &zones {
+            self.metrics.register_zone(zone.clone());
+        }
+
         info!("Loaded {} zones in zone cache", zones.len());
         let zones = Arc::new(zones);
+
         // Get the pointer to store
         let ptr = Arc::into_raw(zones) as *mut _;
         let old_ptr = self.zone_list.swap(ptr, Ordering::AcqRel);
