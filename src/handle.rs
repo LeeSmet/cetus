@@ -149,6 +149,8 @@ where
         let query = request.query();
         self.metrics
             .increment_zone_record_type(zone_name, query.query_type());
+        self.metrics
+            .increment_zone_query_class(zone_name, query.query_class());
 
         trace!("Getting zone SOA for {}", zone_name);
         let soas = match self
@@ -258,11 +260,13 @@ where
         response_handle: R,
     ) -> ResponseInfo {
         self.metrics
+            .increment_unknown_zone_query_class(request.query().query_class());
+        self.metrics
             .increment_unknown_zone_connection_type(&request.src(), request.protocol());
         self.metrics
             .increment_unknown_zone_record_type(request.query().query_type());
         self.metrics
-            .increment_unknown_zoneresponse_code(ResponseCode::Refused);
+            .increment_unknown_zone_response_code(ResponseCode::Refused);
         // We aren't an authority for this query, therefore it is refused.
         self.reply_error(request, response_handle, ResponseCode::Refused)
             .await

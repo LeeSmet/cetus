@@ -14,7 +14,10 @@ use prometheus::{
     labels, opts, register_int_counter_vec_with_registry, Encoder, IntCounterVec, Registry,
     TextEncoder,
 };
-use trust_dns_proto::{op::ResponseCode, rr::RecordType};
+use trust_dns_proto::{
+    op::ResponseCode,
+    rr::{DNSClass, RecordType},
+};
 use trust_dns_server::{client::rr::LowerName, server::Protocol};
 
 /// &str representation of ipv4
@@ -48,6 +51,7 @@ pub struct MetricsInner {
 /// Metrics for a specific zone
 pub struct ZoneMetrics {
     registry: Registry,
+    query_class: IntCounterVec,
     record_types: IntCounterVec,
     connection_types: IntCounterVec,
     response_codes: IntCounterVec,
@@ -127,6 +131,24 @@ impl ZoneMetrics {
         record_types.with_label_values(&[RecordType::TSIG.into()]);
         record_types.with_label_values(&[RecordType::TXT.into()]);
 
+        let query_class = register_int_counter_vec_with_registry!(
+            opts!(
+                "query_class",
+                "The class in the query",
+                labels! {"zone" => &zone_name}
+            ),
+            &["class"],
+            registry
+        )
+        .expect("Can register query class counter vec");
+
+        // pre fill query types.
+        query_class.with_label_values(&[&DNSClass::IN.to_string()]);
+        query_class.with_label_values(&[&DNSClass::CH.to_string()]);
+        query_class.with_label_values(&[&DNSClass::HS.to_string()]);
+        query_class.with_label_values(&[&DNSClass::NONE.to_string()]);
+        query_class.with_label_values(&[&DNSClass::ANY.to_string()]);
+
         let connection_types = register_int_counter_vec_with_registry!(
             opts!(
                 "connection_types",
@@ -153,6 +175,7 @@ impl ZoneMetrics {
 
         ZoneMetrics {
             registry,
+            query_class,
             record_types,
             connection_types,
             response_codes,
@@ -242,7 +265,7 @@ impl Metrics {
     }
 
     /// Increment the response code count for the unknown zone.
-    pub fn increment_unknown_zoneresponse_code(&self, response_code: ResponseCode) {
+    pub fn increment_unknown_zone_response_code(&self, response_code: ResponseCode) {
         self.unknown_zone_metrics
             .response_codes
             .with_label_values(&[response_code.to_str()])
@@ -275,6 +298,24 @@ impl Metrics {
                 if remote.is_ipv4() { IPV4 } else { IPV6 },
                 &proto.to_string(),
             ])
+            .inc();
+    }
+
+    /// Increment the class queried in the zone.
+    pub fn increment_zone_query_class(&self, zone: &LowerName, class: DNSClass) {
+        if let Some(metrics) = self.zone_metrics.get(zone) {
+            metrics
+                .query_class
+                .with_label_values(&[&class.to_string()])
+                .inc();
+        }
+    }
+
+    /// Increment the class queried for the unknown zone.
+    pub fn increment_unknown_zone_query_class(&self, class: DNSClass) {
+        self.unknown_zone_metrics
+            .query_class
+            .with_label_values(&[&class.to_string()])
             .inc();
     }
 
