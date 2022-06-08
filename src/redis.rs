@@ -1,6 +1,5 @@
 use redis_cluster_async::{redis::Cmd, Client};
 use std::net::SocketAddr;
-use trust_dns_proto::rr::rdata::SOA;
 
 use crate::storage::Storage;
 
@@ -15,9 +14,10 @@ impl RedisClusterClient {
     /// # Panics
     ///
     /// This function will panic if an invalid configuration is passed
-    pub fn new(addr: SocketAddr) -> Self {
+    pub fn new(addrs: &[SocketAddr]) -> Self {
+        let connection_strings = addrs.iter().map(|sa| format!("redis://{}", sa)).collect();
         RedisClusterClient {
-            client: Client::open(vec![format!("redis://{}", addr)]).expect("Clusterclient created"),
+            client: Client::open(connection_strings).expect("Clusterclient created"),
         }
     }
 
