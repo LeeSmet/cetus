@@ -26,7 +26,6 @@ fn main() {
         let storage = fs::FSStorage::new(base_path);
         // let handler = handle::DNS::new(MemoryStorage::new());
         let handler = handle::DnsHandler::new("cetus primary".to_string(), storage);
-        handler.load_zones().await.expect("can load zones");
         let mut fut = ServerFuture::new(handler);
         fut.register_socket(udp_socket);
         fut.register_listener(tcp_listener, Duration::from_secs(2));
