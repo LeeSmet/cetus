@@ -8,10 +8,10 @@ use std::{
 use axum::{routing::get, Router};
 use chashmap::CHashMap;
 use prometheus::{
-    labels, opts, register_int_counter_vec_with_registry, register_int_counter_with_registry,
-    Encoder, IntCounter, IntCounterVec, Registry, TextEncoder,
+    labels, opts, register_int_counter_vec_with_registry, Encoder, IntCounterVec, Registry,
+    TextEncoder,
 };
-use trust_dns_proto::op::ResponseCode;
+use trust_dns_proto::{op::ResponseCode, rr::RecordType};
 use trust_dns_server::client::rr::LowerName;
 
 /// Metrics for the dns server.
@@ -22,7 +22,7 @@ pub struct Metrics {
 
 /// Metrics for a specific zone
 pub struct ZoneMetrics {
-    query_count: IntCounter,
+    record_types: IntCounterVec,
     response_codes: IntCounterVec,
 }
 
@@ -63,19 +63,57 @@ impl Metrics {
         response_codes.with_label_values(&[ResponseCode::NotImp.to_str()]);
         response_codes.with_label_values(&[ResponseCode::Refused.to_str()]);
 
-        let query_count = register_int_counter_with_registry!(
+        let record_types = register_int_counter_vec_with_registry!(
             opts!(
-                "total_queries",
-                "total queries in this zone.",
+                "query_type",
+                "the record type requested by the query.",
                 labels! {"zone" => &zone_name}
             ),
+            &["record"],
             self.registry
         )
-        .expect("Can register query counter vec");
+        .expect("Can register query type counter vec");
+
+        // pre fill all record types.
+        record_types.with_label_values(&[RecordType::A.into()]);
+        record_types.with_label_values(&[RecordType::AAAA.into()]);
+        record_types.with_label_values(&[RecordType::ANAME.into()]);
+        record_types.with_label_values(&[RecordType::ANY.into()]);
+        record_types.with_label_values(&[RecordType::AXFR.into()]);
+        record_types.with_label_values(&[RecordType::CAA.into()]);
+        record_types.with_label_values(&[RecordType::CDS.into()]);
+        record_types.with_label_values(&[RecordType::CDNSKEY.into()]);
+        record_types.with_label_values(&[RecordType::CNAME.into()]);
+        record_types.with_label_values(&[RecordType::CSYNC.into()]);
+        record_types.with_label_values(&[RecordType::DNSKEY.into()]);
+        record_types.with_label_values(&[RecordType::DS.into()]);
+        record_types.with_label_values(&[RecordType::HINFO.into()]);
+        record_types.with_label_values(&[RecordType::HTTPS.into()]);
+        record_types.with_label_values(&[RecordType::IXFR.into()]);
+        record_types.with_label_values(&[RecordType::KEY.into()]);
+        record_types.with_label_values(&[RecordType::MX.into()]);
+        record_types.with_label_values(&[RecordType::NAPTR.into()]);
+        record_types.with_label_values(&[RecordType::NS.into()]);
+        record_types.with_label_values(&[RecordType::NSEC.into()]);
+        record_types.with_label_values(&[RecordType::NSEC3.into()]);
+        record_types.with_label_values(&[RecordType::NSEC3PARAM.into()]);
+        record_types.with_label_values(&[RecordType::NULL.into()]);
+        record_types.with_label_values(&[RecordType::OPENPGPKEY.into()]);
+        record_types.with_label_values(&[RecordType::OPT.into()]);
+        record_types.with_label_values(&[RecordType::PTR.into()]);
+        record_types.with_label_values(&[RecordType::RRSIG.into()]);
+        record_types.with_label_values(&[RecordType::SIG.into()]);
+        record_types.with_label_values(&[RecordType::SOA.into()]);
+        record_types.with_label_values(&[RecordType::SRV.into()]);
+        record_types.with_label_values(&[RecordType::SSHFP.into()]);
+        record_types.with_label_values(&[RecordType::SVCB.into()]);
+        record_types.with_label_values(&[RecordType::TLSA.into()]);
+        record_types.with_label_values(&[RecordType::TSIG.into()]);
+        record_types.with_label_values(&[RecordType::TXT.into()]);
 
         let zone_metrics = ZoneMetrics {
+            record_types,
             response_codes,
-            query_count,
         };
 
         self.zone_metrics.insert(zone, zone_metrics);
@@ -88,9 +126,12 @@ impl Metrics {
     }
 
     /// Increment the query count for a zone.
-    pub fn increment_zone_query_count(&self, zone: &LowerName) {
+    pub fn increment_zone_record_type(&self, zone: &LowerName, query_type: RecordType) {
         if let Some(metrics) = self.zone_metrics.get(zone) {
-            metrics.query_count.inc();
+            metrics
+                .record_types
+                .with_label_values(&[query_type.into()])
+                .inc();
         };
     }
 

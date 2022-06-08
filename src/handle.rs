@@ -135,8 +135,9 @@ where
         zone_name: &LowerName,
         mut response_handle: R,
     ) -> ResponseInfo {
-        self.metrics.increment_zone_query_count(zone_name);
         let query = request.query();
+        self.metrics
+            .increment_zone_record_type(zone_name, query.query_type());
 
         trace!("Getting zone SOA for {}", zone_name);
         let soas = match self
