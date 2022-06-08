@@ -115,16 +115,11 @@ where
 
         // Next check if we are authorized for the zone.
         let zone = self.find_authority(query);
-        if zone.is_none() {
-            // We aren't an authority for this query, therefore it is refused.
-            return self
-                .reply_error(request, response_handle, ResponseCode::Refused)
-                .await;
+        if let Some(zone_name) = zone {
+            self.query_zone(request, &zone_name, response_handle).await
+        } else {
+            self.query_unknown_zone(request, response_handle).await
         }
-        // unwrap is safe as we just checked the none case and returned.
-        let zone_name = zone.unwrap();
-
-        self.query_zone(request, &zone_name, response_handle).await
     }
 
     /// Handle a query in a zone. At this point, validation of the zone is assumed to already have
@@ -136,7 +131,7 @@ where
         mut response_handle: R,
     ) -> ResponseInfo {
         self.metrics
-            .increment_connection_type(zone_name, &request.src(), request.protocol());
+            .increment_zone_connection_type(zone_name, &request.src(), request.protocol());
         let query = request.query();
         self.metrics
             .increment_zone_record_type(zone_name, query.query_type());
@@ -150,7 +145,7 @@ where
             Err(e) => {
                 error!("Failed to fetch SOA record for {}: {}", zone_name, e);
                 self.metrics
-                    .increment_response_code(zone_name, ResponseCode::ServFail);
+                    .increment_zone_response_code(zone_name, ResponseCode::ServFail);
                 return self
                     .reply_error(request, response_handle, ResponseCode::ServFail)
                     .await;
@@ -178,7 +173,7 @@ where
                     e
                 );
                 self.metrics
-                    .increment_response_code(zone_name, ResponseCode::ServFail);
+                    .increment_zone_response_code(zone_name, ResponseCode::ServFail);
                 return self
                     .reply_error(request, response_handle, ResponseCode::ServFail)
                     .await;
@@ -230,7 +225,7 @@ where
         );
 
         self.metrics
-            .increment_response_code(zone_name, msg.header().response_code());
+            .increment_zone_response_code(zone_name, msg.header().response_code());
         match response_handle.send_response(msg).await {
             Ok(info) => info,
             Err(ioe) => {
@@ -241,6 +236,22 @@ where
                 ResponseInfo::from(*request.header())
             }
         }
+    }
+
+    async fn query_unknown_zone<R: trust_dns_server::server::ResponseHandler>(
+        &self,
+        request: &trust_dns_server::server::Request,
+        response_handle: R,
+    ) -> ResponseInfo {
+        self.metrics
+            .increment_unknown_zone_connection_type(&request.src(), request.protocol());
+        self.metrics
+            .increment_unknown_zone_record_type(request.query().query_type());
+        self.metrics
+            .increment_unknown_zoneresponse_code(ResponseCode::Refused);
+        // We aren't an authority for this query, therefore it is refused.
+        self.reply_error(request, response_handle, ResponseCode::Refused)
+            .await
     }
 
     /// Send a generic error response. If sending the response fails, a new [ResponseInfo] object is

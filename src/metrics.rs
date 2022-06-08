@@ -23,6 +23,8 @@ const IPV6: &str = "IPv6";
 pub struct Metrics {
     registry: Registry,
     zone_metrics: CHashMap<LowerName, ZoneMetrics>,
+    /// metrics used if a query is not in the zone
+    unknown_zone_metrics: ZoneMetrics,
 }
 
 /// Metrics for a specific zone
@@ -32,25 +34,13 @@ pub struct ZoneMetrics {
     response_codes: IntCounterVec,
 }
 
-impl Metrics {
-    /// Create a new Metrics instance. The metrics won't have any zone info, these need to be added
-    /// manually after creating the instance.
-    pub fn new(instance_name: String) -> Metrics {
-        let mut labels = HashMap::new();
-        labels.insert("instance_name".to_string(), instance_name);
-        let registry = Registry::new_custom(Some("cetus".to_string()), Some(labels))
-            .expect("can create a new registry");
-        let zone_metrics = CHashMap::new();
-        Metrics {
-            registry,
-            zone_metrics,
-        }
-    }
-
-    /// Register a new zone in the metrics, so that they are exposed and can be updated.
-    pub fn register_zone(&self, zone: LowerName) {
-        // Needed because labels! moves the value.
-        let zone_name = zone.to_string();
+impl ZoneMetrics {
+    fn register(zone: Option<&LowerName>, registry: &Registry) -> ZoneMetrics {
+        let zone_name = if let Some(ref zone) = zone {
+            zone.to_string()
+        } else {
+            "UNKNOWN".to_string()
+        };
 
         let response_codes = register_int_counter_vec_with_registry!(
             opts!(
@@ -59,7 +49,7 @@ impl Metrics {
                 labels! {"zone" => &zone_name}
             ),
             &["code"],
-            self.registry
+            registry
         )
         .expect("Can register response code counters");
         // pre fill all response codes, though only the ones we use
@@ -77,7 +67,7 @@ impl Metrics {
                 labels! {"zone" => &zone_name}
             ),
             &["record"],
-            self.registry
+            registry
         )
         .expect("Can register query type counter vec");
 
@@ -125,7 +115,7 @@ impl Metrics {
                 labels! {"zone" => &zone_name}
             ),
             &["ip_version", "protocol"],
-            self.registry
+            registry
         )
         .expect("Can register connection type counter vec");
 
@@ -142,11 +132,34 @@ impl Metrics {
         // connection_types.with_label_values(&[IPV6, &Protocol::Tls.to_string()]);
         // connection_types.with_label_values(&[IPV6, &Protocol::Https.to_string()]);
 
-        let zone_metrics = ZoneMetrics {
+        ZoneMetrics {
             record_types,
             connection_types,
             response_codes,
-        };
+        }
+    }
+}
+
+impl Metrics {
+    /// Create a new Metrics instance. The metrics won't have any zone info, these need to be added
+    /// manually after creating the instance.
+    pub fn new(instance_name: String) -> Metrics {
+        let mut labels = HashMap::new();
+        labels.insert("instance_name".to_string(), instance_name);
+        let registry = Registry::new_custom(Some("cetus".to_string()), Some(labels))
+            .expect("can create a new registry");
+        let zone_metrics = CHashMap::new();
+        let unknown_zone_metrics = ZoneMetrics::register(None, &registry);
+        Metrics {
+            registry,
+            zone_metrics,
+            unknown_zone_metrics,
+        }
+    }
+
+    /// Register a new zone in the metrics, so that they are exposed and can be updated.
+    pub fn register_zone(&self, zone: LowerName) {
+        let zone_metrics = ZoneMetrics::register(Some(&zone), &self.registry);
 
         self.zone_metrics.insert(zone, zone_metrics);
     }
@@ -157,18 +170,26 @@ impl Metrics {
         unimplemented!();
     }
 
-    /// Increment the query count for a zone.
-    pub fn increment_zone_record_type(&self, zone: &LowerName, query_type: RecordType) {
+    /// Increment the query record type for a zone.
+    pub fn increment_zone_record_type(&self, zone: &LowerName, record_type: RecordType) {
         if let Some(metrics) = self.zone_metrics.get(zone) {
             metrics
                 .record_types
-                .with_label_values(&[query_type.into()])
+                .with_label_values(&[record_type.into()])
                 .inc();
         };
     }
 
+    /// Increment the query record type for the unknown zone.
+    pub fn increment_unknown_zone_record_type(&self, record_type: RecordType) {
+        self.unknown_zone_metrics
+            .record_types
+            .with_label_values(&[record_type.into()])
+            .inc();
+    }
+
     /// Increment the response code count for a zone.
-    pub fn increment_response_code(&self, zone: &LowerName, response_code: ResponseCode) {
+    pub fn increment_zone_response_code(&self, zone: &LowerName, response_code: ResponseCode) {
         if let Some(metrics) = self.zone_metrics.get(zone) {
             metrics
                 .response_codes
@@ -177,7 +198,16 @@ impl Metrics {
         }
     }
 
-    pub fn increment_connection_type(
+    /// Increment the response code count for the unknown zone.
+    pub fn increment_unknown_zoneresponse_code(&self, response_code: ResponseCode) {
+        self.unknown_zone_metrics
+            .response_codes
+            .with_label_values(&[response_code.to_str()])
+            .inc();
+    }
+
+    /// Increment the connection type info for a zone.
+    pub fn increment_zone_connection_type(
         &self,
         zone: &LowerName,
         remote: &SocketAddr,
@@ -192,6 +222,17 @@ impl Metrics {
                 ])
                 .inc();
         }
+    }
+
+    /// Increment the connection type info for the unknown zone.
+    pub fn increment_unknown_zone_connection_type(&self, remote: &SocketAddr, proto: Protocol) {
+        self.unknown_zone_metrics
+            .connection_types
+            .with_label_values(&[
+                if remote.is_ipv4() { IPV4 } else { IPV6 },
+                &proto.to_string(),
+            ])
+            .inc();
     }
 
     /// Set up the metric server and bind it to the given socket address. The server won't start
