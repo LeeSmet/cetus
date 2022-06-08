@@ -6,6 +6,7 @@ mod fs;
 mod handle;
 mod memory;
 mod metrics;
+mod redis;
 mod storage;
 
 fn main() {
