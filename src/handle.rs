@@ -1,6 +1,10 @@
-use std::sync::{
-    atomic::{AtomicPtr, Ordering},
-    Arc,
+use std::{
+    future::Future,
+    sync::{
+        atomic::{AtomicPtr, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 
 use log::{debug, error, info, trace, warn};
@@ -26,12 +30,16 @@ type ZoneCache = AtomicPtr<Vec<LowerName>>;
 pub struct DnsHandler<S> {
     // list of all known zones, this allows us to verify if we are an authority without hitting the
     // database.
-    zone_list: ZoneCache,
-    storage: S,
+    // TODO: check if there is a better way to spawn the refresh loop.
+    zone_cache: Arc<ZoneCache>,
+    storage: Arc<S>,
     metrics: Metrics,
 }
 
-impl<S> DnsHandler<S> {
+impl<S> DnsHandler<S>
+where
+    S: Storage + Send + Sync + Unpin + 'static,
+{
     /// Create a new DNS handler with the given [`Storage`].
     ///
     /// # Panics
@@ -43,16 +51,22 @@ impl<S> DnsHandler<S> {
             .parse()
             .expect("Can parse static socket address");
         let zones = Arc::new(Vec::<LowerName>::new());
-        let zone_list = AtomicPtr::new(Arc::into_raw(zones) as *mut _);
+        let zone_cache = Arc::new(AtomicPtr::new(Arc::into_raw(zones) as *mut _));
+        let storage = Arc::new(storage);
         let metrics = Metrics::new(instance_name);
-        let metric_server = metrics.server_future(metric_addr);
         // Start the metric server forever
-        tokio::spawn(metric_server);
-        DnsHandler {
-            zone_list,
+        tokio::spawn(metrics.server_future(metric_addr));
+
+        let handler = DnsHandler {
+            zone_cache,
             storage,
             metrics,
-        }
+        };
+
+        // Start permanently loading zones
+        tokio::spawn(handler.zone_loader());
+
+        handler
     }
 }
 
@@ -296,7 +310,7 @@ where
     fn zone_list(&self) -> Arc<Vec<LowerName>> {
         trace!("Loading zone cache");
 
-        let ptr = self.zone_list.load(Ordering::Relaxed);
+        let ptr = self.zone_cache.load(Ordering::Relaxed);
         // SAFETY: These methods are safe if performed on *const T acquired by calling
         // Arc::into_raw(), which is always the case here. Furthermore, we guarantee manually that
         // the refcount is correct and accounts for the decrement once the reconstructed Arc gets
@@ -310,29 +324,44 @@ where
         }
     }
 
-    /// Load all known zones from storage and cache them. This removes previously stored zones.
-    pub async fn load_zones(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Create the new zone mapping;
-        let zones = self.storage.zones().await?;
+    /// Generates a future which continuously loads all know zones and caches them. This removes
+    /// previously stored zones.
+    fn zone_loader(&self) -> impl Future<Output = ()> {
+        let storage = self.storage.clone();
+        let zone_cache = self.zone_cache.clone();
+        let metrics = self.metrics.clone();
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
 
-        // TODO: properly add and remove zones.
-        for zone in &zones {
-            self.metrics.register_zone(zone.clone());
+        async move {
+            loop {
+                interval.tick().await;
+                // Create the new zone mapping;
+                let zones = match storage.zones().await {
+                    Ok(zones) => zones,
+                    Err(e) => {
+                        error!("Failed to load zones: {}", e);
+                        continue;
+                    }
+                };
+
+                // TODO: properly add and remove zones.
+                for zone in &zones {
+                    metrics.register_zone(zone.clone());
+                }
+
+                info!("Loaded {} zones in zone cache", zones.len());
+                let zones = Arc::new(zones);
+
+                // Get the pointer to store
+                let ptr = Arc::into_raw(zones) as *mut _;
+                let old_ptr = zone_cache.swap(ptr, Ordering::AcqRel);
+
+                // Create the arc from the raw pointer. Don't increment refcount first. This will trigger
+                // proper cleanup of the Arc and it's associated data once the last one goes out of scope.
+                // SAFETY: this is safe since regular loads of the pointer always increment refcount first,
+                // so the pointer is always valid.
+                unsafe { Arc::from_raw(old_ptr) };
+            }
         }
-
-        info!("Loaded {} zones in zone cache", zones.len());
-        let zones = Arc::new(zones);
-
-        // Get the pointer to store
-        let ptr = Arc::into_raw(zones) as *mut _;
-        let old_ptr = self.zone_list.swap(ptr, Ordering::AcqRel);
-
-        // Create the arc from the raw pointer. Don't increment refcount first. This will trigger
-        // proper cleanup of the Arc and it's associated data once the last one goes out of scope.
-        // SAFETY: this is safe since regular loads of the pointer always increment refcount first,
-        // so the pointer is always valid.
-        unsafe { Arc::from_raw(old_ptr) };
-
-        Ok(())
     }
 }

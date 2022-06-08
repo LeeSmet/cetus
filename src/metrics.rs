@@ -3,6 +3,8 @@ use std::{
     error::Error,
     future::{ready, Future},
     net::SocketAddr,
+    ops::Deref,
+    sync::Arc,
 };
 
 use axum::{routing::get, Router};
@@ -19,8 +21,23 @@ const IPV4: &str = "IPv4";
 /// &str representation of ipv6
 const IPV6: &str = "IPv6";
 
-/// Metrics for the dns server.
+/// Metrics for the dns server. These can be cheaply cloned to share between multiple
+/// tasks/threads.
+#[derive(Clone)]
 pub struct Metrics {
+    inner: Arc<MetricsInner>,
+}
+
+impl Deref for Metrics {
+    type Target = MetricsInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+/// Actual implementation of the metrics.
+pub struct MetricsInner {
     registry: Registry,
     zone_metrics: CHashMap<LowerName, ZoneMetrics>,
     /// metrics used if a query is not in the zone
@@ -151,9 +168,11 @@ impl Metrics {
         let zone_metrics = CHashMap::new();
         let unknown_zone_metrics = ZoneMetrics::register(None, &registry);
         Metrics {
-            registry,
-            zone_metrics,
-            unknown_zone_metrics,
+            inner: Arc::new(MetricsInner {
+                registry,
+                zone_metrics,
+                unknown_zone_metrics,
+            }),
         }
     }
 
