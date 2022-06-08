@@ -12,7 +12,12 @@ use prometheus::{
     TextEncoder,
 };
 use trust_dns_proto::{op::ResponseCode, rr::RecordType};
-use trust_dns_server::client::rr::LowerName;
+use trust_dns_server::{client::rr::LowerName, server::Protocol};
+
+/// &str representation of ipv4
+const IPV4: &str = "IPv4";
+/// &str representation of ipv6
+const IPV6: &str = "IPv6";
 
 /// Metrics for the dns server.
 pub struct Metrics {
@@ -23,6 +28,7 @@ pub struct Metrics {
 /// Metrics for a specific zone
 pub struct ZoneMetrics {
     record_types: IntCounterVec,
+    connection_types: IntCounterVec,
     response_codes: IntCounterVec,
 }
 
@@ -46,15 +52,16 @@ impl Metrics {
         // Needed because labels! moves the value.
         let zone_name = zone.to_string();
 
-        let response_code_opts = opts!(
-            "response_code",
-            "response codes returned by queries to zones in the given authority.",
-            labels! {"zone" => &zone_name}
-        );
-
-        let response_codes =
-            register_int_counter_vec_with_registry!(response_code_opts, &["code"], self.registry)
-                .expect("Can register response code counters");
+        let response_codes = register_int_counter_vec_with_registry!(
+            opts!(
+                "response_code",
+                "response codes returned by queries to zones in the given authority.",
+                labels! {"zone" => &zone_name}
+            ),
+            &["code"],
+            self.registry
+        )
+        .expect("Can register response code counters");
         // pre fill all response codes, though only the ones we use
         response_codes.with_label_values(&[ResponseCode::NoError.to_str()]);
         response_codes.with_label_values(&[ResponseCode::NotImp.to_str()]);
@@ -111,8 +118,33 @@ impl Metrics {
         record_types.with_label_values(&[RecordType::TSIG.into()]);
         record_types.with_label_values(&[RecordType::TXT.into()]);
 
+        let connection_types = register_int_counter_vec_with_registry!(
+            opts!(
+                "connection_types",
+                "The type of connection used for the query to the zone",
+                labels! {"zone" => &zone_name}
+            ),
+            &["ip_version", "protocol"],
+            self.registry
+        )
+        .expect("Can register connection type counter vec");
+
+        // pre fill connection types.
+        // NOTE: currently only UDP and TCP are able to be used.
+        connection_types.with_label_values(&[IPV4, &Protocol::Udp.to_string()]);
+        connection_types.with_label_values(&[IPV4, &Protocol::Tcp.to_string()]);
+        // connection_types.with_label_values(&[IPV4, &Protocol::Dtls.to_string()]);
+        // connection_types.with_label_values(&[IPV4, &Protocol::Tls.to_string()]);
+        // connection_types.with_label_values(&[IPV4, &Protocol::Https.to_string()]);
+        connection_types.with_label_values(&[IPV6, &Protocol::Udp.to_string()]);
+        connection_types.with_label_values(&[IPV6, &Protocol::Tcp.to_string()]);
+        // connection_types.with_label_values(&[IPV6, &Protocol::Dtls.to_string()]);
+        // connection_types.with_label_values(&[IPV6, &Protocol::Tls.to_string()]);
+        // connection_types.with_label_values(&[IPV6, &Protocol::Https.to_string()]);
+
         let zone_metrics = ZoneMetrics {
             record_types,
+            connection_types,
             response_codes,
         };
 
@@ -141,6 +173,23 @@ impl Metrics {
             metrics
                 .response_codes
                 .with_label_values(&[response_code.to_str()])
+                .inc();
+        }
+    }
+
+    pub fn increment_connection_type(
+        &self,
+        zone: &LowerName,
+        remote: &SocketAddr,
+        proto: Protocol,
+    ) {
+        if let Some(metrics) = self.zone_metrics.get(zone) {
+            metrics
+                .connection_types
+                .with_label_values(&[
+                    if remote.is_ipv4() { IPV4 } else { IPV6 },
+                    &proto.to_string(),
+                ])
                 .inc();
         }
     }

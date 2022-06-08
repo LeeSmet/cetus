@@ -135,6 +135,8 @@ where
         zone_name: &LowerName,
         mut response_handle: R,
     ) -> ResponseInfo {
+        self.metrics
+            .increment_connection_type(zone_name, &request.src(), request.protocol());
         let query = request.query();
         self.metrics
             .increment_zone_record_type(zone_name, query.query_type());
