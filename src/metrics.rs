@@ -9,6 +9,7 @@ use std::{
 
 use axum::{routing::get, Router};
 use chashmap::CHashMap;
+use log::debug;
 use prometheus::{
     labels, opts, register_int_counter_vec_with_registry, Encoder, IntCounterVec, Registry,
     TextEncoder,
@@ -46,13 +47,14 @@ pub struct MetricsInner {
 
 /// Metrics for a specific zone
 pub struct ZoneMetrics {
+    registry: Registry,
     record_types: IntCounterVec,
     connection_types: IntCounterVec,
     response_codes: IntCounterVec,
 }
 
 impl ZoneMetrics {
-    fn register(zone: Option<&LowerName>, registry: &Registry) -> ZoneMetrics {
+    fn register(zone: Option<&LowerName>, registry: Registry) -> ZoneMetrics {
         let zone_name = if let Some(ref zone) = zone {
             zone.to_string()
         } else {
@@ -150,10 +152,27 @@ impl ZoneMetrics {
         // connection_types.with_label_values(&[IPV6, &Protocol::Https.to_string()]);
 
         ZoneMetrics {
+            registry,
             record_types,
             connection_types,
             response_codes,
         }
+    }
+
+    /// Remove existing metrics from a register, making the item inaccessible.
+    fn unregister(self) {
+        // This unwrap is safe as self.registry is the registry used to add the metrics
+        self.registry
+            .unregister(Box::new(self.response_codes))
+            .unwrap();
+        // This unwrap is safe as self.registry is the registry used to add the metrics
+        self.registry
+            .unregister(Box::new(self.connection_types))
+            .unwrap();
+        // This unwrap is safe as self.registry is the registry used to add the metrics
+        self.registry
+            .unregister(Box::new(self.record_types))
+            .unwrap();
     }
 }
 
@@ -166,7 +185,7 @@ impl Metrics {
         let registry = Registry::new_custom(Some("cetus".to_string()), Some(labels))
             .expect("can create a new registry");
         let zone_metrics = CHashMap::new();
-        let unknown_zone_metrics = ZoneMetrics::register(None, &registry);
+        let unknown_zone_metrics = ZoneMetrics::register(None, registry.clone());
         Metrics {
             inner: Arc::new(MetricsInner {
                 registry,
@@ -178,15 +197,20 @@ impl Metrics {
 
     /// Register a new zone in the metrics, so that they are exposed and can be updated.
     pub fn register_zone(&self, zone: LowerName) {
-        let zone_metrics = ZoneMetrics::register(Some(&zone), &self.registry);
+        debug!("Registering metrics for zone {}", zone);
 
+        let zone_metrics = ZoneMetrics::register(Some(&zone), self.registry.clone());
         self.zone_metrics.insert(zone, zone_metrics);
     }
 
     /// Unregister an existing zone from the metrics, so that metrics are no longer exposed. They
     /// will also not be available anymore to update.
     pub fn unregister_zone(&self, zone: &LowerName) {
-        unimplemented!();
+        debug!("Unregistering metrics for zone {}", zone);
+
+        if let Some(zone_metrics) = self.zone_metrics.remove(zone) {
+            zone_metrics.unregister();
+        }
     }
 
     /// Increment the query record type for a zone.

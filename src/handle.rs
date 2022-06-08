@@ -344,23 +344,35 @@ where
                     }
                 };
 
-                // TODO: properly add and remove zones.
+                // Load existing cache. We don't increment the refcount here so a cleanup is
+                // triggered once this one goes out of scope, and the last available Arc from this
+                // value goes out of scope if one exists.
+                let old_ptr = zone_cache.load(Ordering::Acquire);
+                // SAFETY: this is safe since regular loads of the pointer always increment refcount first,
+                // so the pointer is always valid.
+                let cache = unsafe { Arc::from_raw(old_ptr) };
+
+                // First add potentially new zones.
                 for zone in &zones {
-                    metrics.register_zone(zone.clone());
+                    if !cache.contains(zone) {
+                        trace!("Zone {} is not in cache yet, register metrics now", zone);
+                        metrics.register_zone(zone.clone());
+                    }
+                }
+                // Then unregister potentially removed zones.
+                for existing_zone in cache.iter() {
+                    if !zones.contains(existing_zone) {
+                        trace!("Zone {} was in cache but does not exist anymore, unregister metrics now", existing_zone);
+                        metrics.unregister_zone(existing_zone);
+                    }
                 }
 
                 info!("Loaded {} zones in zone cache", zones.len());
                 let zones = Arc::new(zones);
 
-                // Get the pointer to store
+                // Get the new pointer and store it.
                 let ptr = Arc::into_raw(zones) as *mut _;
-                let old_ptr = zone_cache.swap(ptr, Ordering::AcqRel);
-
-                // Create the arc from the raw pointer. Don't increment refcount first. This will trigger
-                // proper cleanup of the Arc and it's associated data once the last one goes out of scope.
-                // SAFETY: this is safe since regular loads of the pointer always increment refcount first,
-                // so the pointer is always valid.
-                unsafe { Arc::from_raw(old_ptr) };
+                zone_cache.store(ptr, Ordering::Release);
             }
         }
     }
