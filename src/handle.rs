@@ -152,6 +152,10 @@ where
         self.metrics
             .increment_zone_query_class(zone_name, query.query_class());
 
+        // Mark the server as authorative
+        let mut header = *request.header();
+        header.set_authoritative(true);
+
         trace!("Getting zone SOA for {}", zone_name);
         let soas = match self
             .storage
@@ -204,7 +208,6 @@ where
         };
 
         // Set NXDOMAIN if there domain is not found.
-        let mut header = *request.header();
         if records.is_none() {
             header.set_response_code(ResponseCode::NXDomain);
         };
