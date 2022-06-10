@@ -1,5 +1,6 @@
 use std::{
     future::Future,
+    net::SocketAddr,
     sync::{
         atomic::{AtomicPtr, Ordering},
         Arc,
@@ -45,17 +46,15 @@ where
     /// # Panics
     ///
     /// This function will panic if called outside the context of a `[tokio]` runtime.
-    pub fn new(instance_name: String, storage: S) -> Self {
-        // TODO: inject metric addr
-        let metric_addr = "[::]:9000"
-            .parse()
-            .expect("Can parse static socket address");
+    pub fn new(instance_name: String, metric_socket: Option<SocketAddr>, storage: S) -> Self {
         let zones = Arc::new(Vec::<LowerName>::new());
         let zone_cache = Arc::new(AtomicPtr::new(Arc::into_raw(zones) as *mut _));
         let storage = Arc::new(storage);
         let metrics = Metrics::new(instance_name);
         // Start the metric server forever
-        tokio::spawn(metrics.server_future(metric_addr));
+        if let Some(metric_addr) = metric_socket {
+            tokio::spawn(metrics.server_future(metric_addr));
+        }
 
         let handler = DnsHandler {
             zone_cache,
@@ -144,6 +143,7 @@ where
         zone_name: &LowerName,
         mut response_handle: R,
     ) -> ResponseInfo {
+        trace!("Request source {}", &request.src());
         self.metrics
             .increment_zone_connection_type(zone_name, &request.src(), request.protocol());
         let query = request.query();

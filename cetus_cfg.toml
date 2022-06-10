@@ -1,0 +1,11 @@
+instance_name = "cetus_primary"
+metrics_address = "0.0.0.0:9000"
+udp_sockets = ["0.0.0.0:5353", "[::]:5353"]
+
+[[tcp_listeners]]
+address = "0.0.0.0:5353"
+timeout_millis = 1950
+
+[[tcp_listeners]]
+address = "[::]:5353"
+timeout_millis = 1950
