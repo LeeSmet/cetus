@@ -19,7 +19,7 @@ use trust_dns_server::{
     server::{RequestHandler, ResponseInfo},
 };
 
-use crate::{metrics::Metrics, storage::Storage};
+use crate::{geo::GeoLocator, metrics::Metrics, storage::Storage};
 
 /// We don't expect frequent updates of the Zone list, so use an [AtomicPtr] here. The idea is that
 /// we will create a new [Arc] if there is a new list, and an atomic operation is used to swap the
@@ -34,6 +34,7 @@ pub struct DnsHandler<S> {
     // TODO: check if there is a better way to spawn the refresh loop.
     zone_cache: Arc<ZoneCache>,
     storage: Arc<S>,
+    geoip_db: GeoLocator,
     metrics: Metrics,
 }
 
@@ -46,7 +47,12 @@ where
     /// # Panics
     ///
     /// This function will panic if called outside the context of a `[tokio]` runtime.
-    pub fn new(instance_name: String, metric_socket: Option<SocketAddr>, storage: S) -> Self {
+    pub fn new(
+        instance_name: String,
+        metric_socket: Option<SocketAddr>,
+        geoip_db: GeoLocator,
+        storage: S,
+    ) -> Self {
         let zones = Arc::new(Vec::<LowerName>::new());
         let zone_cache = Arc::new(AtomicPtr::new(Arc::into_raw(zones) as *mut _));
         let storage = Arc::new(storage);
@@ -60,6 +66,7 @@ where
             zone_cache,
             storage,
             metrics,
+            geoip_db,
         };
 
         // Start permanently loading zones
@@ -143,7 +150,6 @@ where
         zone_name: &LowerName,
         mut response_handle: R,
     ) -> ResponseInfo {
-        trace!("Request source {}", &request.src());
         self.metrics
             .increment_zone_connection_type(zone_name, &request.src(), request.protocol());
         let query = request.query();
@@ -151,6 +157,28 @@ where
             .increment_zone_record_type(zone_name, query.query_type());
         self.metrics
             .increment_zone_query_class(zone_name, query.query_class());
+
+        let (country, continent) = match self.geoip_db.lookup_ip(request.src().ip()) {
+            Ok(info) => info,
+            Err(e) => {
+                error!("Failed to fetch IP location {}: {}", &request.src().ip(), e);
+                self.metrics
+                    .increment_zone_response_code(zone_name, ResponseCode::ServFail);
+                return self
+                    .reply_error(request, response_handle, ResponseCode::ServFail)
+                    .await;
+            }
+        };
+        if let Some(ref country) = country {
+            self.metrics
+                .increment_zone_country_query(zone_name, &*country);
+        }
+        trace!(
+            "Request source {} from country {:?} in {:?}",
+            &request.src(),
+            country,
+            continent
+        );
 
         // Mark the server as authorative
         let mut header = *request.header();
@@ -268,6 +296,20 @@ where
             .increment_unknown_zone_connection_type(&request.src(), request.protocol());
         self.metrics
             .increment_unknown_zone_record_type(request.query().query_type());
+        let (country, _) = match self.geoip_db.lookup_ip(request.src().ip()) {
+            Ok(info) => info,
+            Err(e) => {
+                error!("Failed to fetch IP location {}: {}", &request.src().ip(), e);
+                self.metrics
+                    .increment_unknown_zone_response_code(ResponseCode::ServFail);
+                return self
+                    .reply_error(request, response_handle, ResponseCode::ServFail)
+                    .await;
+            }
+        };
+        if let Some(ref country) = country {
+            self.metrics.increment_unknown_zone_country_query(&*country);
+        }
         self.metrics
             .increment_unknown_zone_response_code(ResponseCode::Refused);
         // We aren't an authority for this query, therefore it is refused.

@@ -55,6 +55,7 @@ pub struct ZoneMetrics {
     record_types: IntCounterVec,
     connection_types: IntCounterVec,
     response_codes: IntCounterVec,
+    country_queries: IntCounterVec,
 }
 
 impl ZoneMetrics {
@@ -173,12 +174,25 @@ impl ZoneMetrics {
         // connection_types.with_label_values(&[IPV6, &Protocol::Tls.to_string()]);
         // connection_types.with_label_values(&[IPV6, &Protocol::Https.to_string()]);
 
+        // We don't prefill this vec
+        let country_queries = register_int_counter_vec_with_registry!(
+            opts!(
+                "country_queries",
+                "The assumed country a query originates from",
+                labels! {"zone" => &zone_name}
+            ),
+            &["country"],
+            registry
+        )
+        .expect("Can register query class counter vec");
+
         ZoneMetrics {
             registry,
             query_class,
             record_types,
             connection_types,
             response_codes,
+            country_queries,
         }
     }
 
@@ -316,6 +330,23 @@ impl Metrics {
         self.unknown_zone_metrics
             .query_class
             .with_label_values(&[&class.to_string()])
+            .inc();
+    }
+
+    /// Increment the query lookup source.
+    pub fn increment_zone_country_query(&self, zone: &LowerName, country: &str) {
+        debug!("Incrementing source '{}' for zone {}", country, zone);
+        if let Some(metrics) = self.zone_metrics.get(zone) {
+            metrics.country_queries.with_label_values(&[country]).inc();
+        }
+    }
+
+    /// Increment the query lookup source for the unknown zone.
+    pub fn increment_unknown_zone_country_query(&self, country: &str) {
+        debug!("Incrementing source '{}' for zone UNKNOWN", country);
+        self.unknown_zone_metrics
+            .country_queries
+            .with_label_values(&[country])
             .inc();
     }
 

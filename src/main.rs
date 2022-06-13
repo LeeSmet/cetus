@@ -5,6 +5,7 @@ use trust_dns_server::ServerFuture;
 
 mod config;
 mod fs;
+mod geo;
 mod handle;
 mod memory;
 mod metrics;
@@ -33,8 +34,10 @@ fn main() {
         let mut base_path = PathBuf::new();
         base_path.push("dns_storage");
         let storage = fs::FSStorage::new(base_path);
+        let geoip_db = geo::GeoLocator::new(cfg.geoip_db_location).unwrap();
         // let handler = handle::DNS::new(MemoryStorage::new());
-        let handler = handle::DnsHandler::new(cfg.instance_name, cfg.metric_listener, storage);
+        let handler =
+            handle::DnsHandler::new(cfg.instance_name, cfg.metric_listener, geoip_db, storage);
         let mut fut = ServerFuture::new(handler);
         for sock_addr in cfg.udp_sockets {
             match UdpSocket::bind(sock_addr).await {

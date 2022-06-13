@@ -25,3 +25,4 @@ prometheus = { version = "0.13", features = ["process"] }
 chashmap = "2.2"
 axum = { version = "0.5", features = ["http2"] }
 toml = "0.5"
+maxminddb = "0.23"
