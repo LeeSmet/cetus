@@ -133,6 +133,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chashmap",
+ "futures-util",
  "log",
  "maxminddb",
  "pretty_env_logger",
