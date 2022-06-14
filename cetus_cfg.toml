@@ -1,5 +1,8 @@
 instance_name = "cetus_primary"
-metrics_address = "0.0.0.0:9000"
+metric_listener = "0.0.0.0:9000"
+
+geoip_db_location = "./geo/GeoLite2-Country.mmdb"
+
 udp_sockets = ["0.0.0.0:5353", "[::]:5353"]
 
 [[tcp_listeners]]
