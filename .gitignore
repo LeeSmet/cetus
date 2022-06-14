@@ -7,3 +7,5 @@
 
 # file storage testing
 /dns_storage/
+# geo db
+/geo
