@@ -25,7 +25,6 @@ impl GeoLocator {
     ) -> Result<(Option<String>, Option<String>), Box<dyn Error + Send + Sync>> {
         trace!("lookup IP {}", ip_addr);
         let country = self.reader.lookup::<geoip2::Country>(ip_addr)?;
-        trace!("country found {:?}", country);
         Ok((
             country
                 .country
