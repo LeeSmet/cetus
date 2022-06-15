@@ -3,6 +3,7 @@ use std::{path::PathBuf, time::Duration};
 use tokio::net::{TcpListener, UdpSocket};
 use trust_dns_server::ServerFuture;
 
+mod api;
 mod config;
 mod fs;
 mod geo;

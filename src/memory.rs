@@ -1,4 +1,4 @@
-use crate::storage::Storage;
+use crate::storage::{Storage, StorageRecord};
 
 pub struct MemoryStorage {}
 
@@ -23,9 +23,24 @@ impl Storage for MemoryStorage {
         &self,
         _name: &trust_dns_server::client::rr::LowerName,
         _zone: &trust_dns_server::client::rr::LowerName,
-        _rtype: trust_dns_proto::rr::RecordType,
-    ) -> Result<Option<Vec<crate::storage::StoredRecord>>, Box<dyn std::error::Error + Send + Sync>>
+        _rtype: trust_dns_server::proto::rr::RecordType,
+    ) -> Result<Option<Vec<crate::storage::StorageRecord>>, Box<dyn std::error::Error + Send + Sync>>
     {
+        unimplemented!();
+    }
+
+    async fn add_zone(
+        &self,
+        zone: &trust_dns_server::client::rr::LowerName,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        unimplemented!();
+    }
+
+    async fn add_record(
+        &self,
+        zone: &trust_dns_server::client::rr::LowerName,
+        record: StorageRecord,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         unimplemented!();
     }
 }

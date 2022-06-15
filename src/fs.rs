@@ -3,7 +3,7 @@ use std::{path::PathBuf, str::FromStr};
 use tokio::fs;
 use trust_dns_server::client::rr::LowerName;
 
-use crate::storage::Storage;
+use crate::storage::{Storage, StorageRecord};
 
 /// An implementation of record storage on the filesystem.
 pub struct FSStorage {
@@ -51,7 +51,7 @@ impl Storage for FSStorage {
         name: &LowerName,
         zone: &LowerName,
         rtype: trust_dns_proto::rr::RecordType,
-    ) -> Result<Option<Vec<crate::storage::StoredRecord>>, Box<dyn std::error::Error + Send + Sync>>
+    ) -> Result<Option<Vec<crate::storage::StorageRecord>>, Box<dyn std::error::Error + Send + Sync>>
     {
         let mut path = self.base.clone();
         path.push(zone.to_string());
@@ -73,5 +73,20 @@ impl Storage for FSStorage {
 
         let data = fs::read(&path).await?;
         Ok(Some(serde_json::from_slice(&data)?))
+    }
+
+    async fn add_zone(
+        &self,
+        zone: &LowerName,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        todo!();
+    }
+
+    async fn add_record(
+        &self,
+        zone: &LowerName,
+        record: StorageRecord,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        todo!();
     }
 }

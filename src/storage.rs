@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 use trust_dns_proto::rr::RecordType;
 use trust_dns_server::{client::rr::LowerName, proto::rr::Record};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct StoredRecord {
+pub struct StorageRecord {
     pub record: Record,
     // TODO
 }
 
-impl StoredRecord {
+impl StorageRecord {
     /// Get access to the actual record.
     pub fn as_record(&self) -> &Record {
         &self.record
@@ -41,5 +41,49 @@ pub trait Storage {
         name: &LowerName,
         zone: &LowerName,
         rtype: RecordType,
-    ) -> Result<Option<Vec<StoredRecord>>, Box<dyn Error + Send + Sync>>;
+    ) -> Result<Option<Vec<StorageRecord>>, Box<dyn Error + Send + Sync>>;
+
+    /// Add a new zone to the server. This only sets a marker in storage to indicate that the
+    /// server is indeed authoritative for the zone, but importantly the SOA and NS records will
+    /// need to be added manually after this.
+    async fn add_zone(&self, zone: &LowerName) -> Result<(), Box<dyn Error + Send + Sync>>;
+
+    /// Store a record in a zone. Callers should always verify that the zone exists before
+    /// submitting a record.
+    async fn add_record(
+        &self,
+        zone: &LowerName,
+        record: StorageRecord,
+    ) -> Result<(), Box<dyn Error + Send + Sync>>;
+}
+
+#[async_trait::async_trait]
+impl<S> Storage for Arc<S>
+where
+    S: Storage + Send + Sync,
+{
+    async fn zones(&self) -> Result<Vec<LowerName>, Box<dyn Error + Send + Sync>> {
+        self.zones().await
+    }
+
+    async fn lookup_records(
+        &self,
+        name: &LowerName,
+        zone: &LowerName,
+        rtype: RecordType,
+    ) -> Result<Option<Vec<StorageRecord>>, Box<dyn Error + Send + Sync>> {
+        self.lookup_records(name, zone, rtype).await
+    }
+
+    async fn add_zone(&self, zone: &LowerName) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.add_zone(zone).await
+    }
+
+    async fn add_record(
+        &self,
+        zone: &LowerName,
+        record: StorageRecord,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.add_record(zone, record).await
+    }
 }

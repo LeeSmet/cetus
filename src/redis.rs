@@ -8,20 +8,20 @@ use trust_dns_server::client::rr::LowerName;
 
 use std::{fmt::Display, net::SocketAddr, str::FromStr};
 
-use crate::storage::Storage;
+use crate::storage::{Storage, StorageRecord};
 
 pub struct RedisClusterClient {
     client: Client,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ConnectionInfo {
+pub struct ClusterConnectionInfo {
     pub user: Option<String>,
     pub password: Option<String>,
     pub address: SocketAddr,
 }
 
-impl Display for ConnectionInfo {
+impl Display for ClusterConnectionInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -48,7 +48,7 @@ impl RedisClusterClient {
     /// # Panics
     ///
     /// This function will panic if an invalid configuration is passed
-    pub fn new(addrs: &[&ConnectionInfo]) -> Self {
+    pub fn new(addrs: &[&ClusterConnectionInfo]) -> Self {
         let connection_strings = addrs.iter().map(|ci| ci.to_string()).collect();
         log::trace!("Connection strings: {:?}", connection_strings);
         RedisClusterClient {
@@ -88,7 +88,7 @@ impl Storage for RedisClusterClient {
         name: &trust_dns_server::client::rr::LowerName,
         zone: &trust_dns_server::client::rr::LowerName,
         rtype: trust_dns_proto::rr::RecordType,
-    ) -> Result<Option<Vec<crate::storage::StoredRecord>>, Box<dyn std::error::Error + Send + Sync>>
+    ) -> Result<Option<Vec<crate::storage::StorageRecord>>, Box<dyn std::error::Error + Send + Sync>>
     {
         let mut con = self.client.get_connection().await?;
         let data = con
@@ -96,5 +96,40 @@ impl Storage for RedisClusterClient {
             .await?;
 
         Ok(Some(serde_json::from_slice(&data)?))
+    }
+
+    async fn add_zone(
+        &self,
+        zone: &LowerName,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.client.get_connection().await?;
+        Ok(con.set(format!("zone:{}", zone), "").await?)
+    }
+
+    async fn add_record(
+        &self,
+        zone: &LowerName,
+        record: StorageRecord,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let record_name = LowerName::from(record.record.name());
+        let record_type = record.record.record_type();
+        let mut con = self.client.get_connection().await?;
+
+        let mut record_set = self
+            .lookup_records(zone, &record_name, record_type)
+            .await?
+            .unwrap_or(vec![]);
+
+        // Add new record to the set
+        record_set.push(record);
+        let new_record_set = serde_json::to_vec(&record_set)?;
+
+        Ok(con
+            .hset::<_, &str, _, _>(
+                format!("resource:{}:{}", zone, record_name),
+                record_type.into(),
+                new_record_set,
+            )
+            .await?)
     }
 }
