@@ -39,6 +39,7 @@ impl Storage for MemoryStorage {
     async fn add_record(
         &self,
         zone: &trust_dns_server::client::rr::LowerName,
+        name: &trust_dns_server::client::rr::LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         unimplemented!();

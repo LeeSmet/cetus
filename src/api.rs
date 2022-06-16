@@ -2,6 +2,8 @@ use std::{net::SocketAddr, sync::Arc};
 
 use crate::storage::{Storage, StorageRecord};
 
+use log::trace;
+
 /// State for all API handlers.
 #[derive(Clone)]
 struct State {
@@ -9,14 +11,13 @@ struct State {
 }
 
 /// Create a new API instance with the given storage, and starts listening on the provided address
-pub async fn listen<S>(storage: S, listen_address: SocketAddr)
+pub fn listen<S>(storage: Arc<S>, listen_address: SocketAddr)
 where
     S: Storage + Send + Sync + 'static,
 {
+    log::trace!("Setting up API");
     // TODO: shutdown
-    let shared_state = State {
-        storage: Arc::new(storage),
-    };
+    let shared_state = State { storage };
     let app = Router::new()
         .route("/zones", get(list_zones))
         .route("/zones/:zone", put(add_zone))
@@ -26,6 +27,7 @@ where
             .serve(app.into_make_service())
             .await
     });
+    log::trace!("API set up");
 }
 
 use axum::{
@@ -43,6 +45,7 @@ use trust_dns_server::client::rr::LowerName;
 async fn list_zones(
     Extension(state): Extension<State>,
 ) -> response::Result<response::Json<Vec<String>>> {
+    trace!("Loading zones through API");
     Ok(response::Json(
         state
             .storage
@@ -94,6 +97,11 @@ async fn add_zone(
 
     let zone_name = LowerName::from(zone.clone());
 
+    if !zone_name.is_fqdn() {
+        log::debug!("Refusing to add zone which is not an fqdn ({})", zone_name);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR.into());
+    }
+
     if existing_zones.contains(&zone_name) {
         // Zone already exists
         return Err(StatusCode::CONFLICT.into());
@@ -120,6 +128,8 @@ async fn add_zone(
         })
         .collect::<Vec<_>>();
 
+    log::trace!("NS records {:?}", ns_records);
+
     // Insert the zone first, otherwise the records will get rejected
     state.storage.add_zone(&zone_name).await.map_err(|err| {
         error!("Failed to add zone: {}", err);
@@ -129,7 +139,7 @@ async fn add_zone(
     // Now insert the SOA record
     state
         .storage
-        .add_record(&zone_name, StorageRecord { record: soa_record })
+        .add_record(&zone_name, &zone_name, StorageRecord { record: soa_record })
         .await
         .map_err(|err| {
             error!("Failed to insert zone SOA: {}", err);
@@ -140,7 +150,7 @@ async fn add_zone(
     for ns_record in ns_records {
         state
             .storage
-            .add_record(&zone_name, StorageRecord { record: ns_record })
+            .add_record(&zone_name, &zone_name, StorageRecord { record: ns_record })
             .await
             .map_err(|err| {
                 error!("Failed to insert NS record: {}", err);

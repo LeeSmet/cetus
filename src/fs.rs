@@ -85,6 +85,7 @@ impl Storage for FSStorage {
     async fn add_record(
         &self,
         zone: &LowerName,
+        name: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         todo!();

@@ -54,6 +54,7 @@ pub trait Storage {
     async fn add_record(
         &self,
         zone: &LowerName,
+        name: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn Error + Send + Sync>>;
 }
@@ -83,8 +84,9 @@ where
     async fn add_record(
         &self,
         zone: &LowerName,
+        name: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.deref().add_record(zone, record).await
+        self.deref().add_record(zone, name, record).await
     }
 }

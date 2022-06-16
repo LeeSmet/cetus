@@ -33,14 +33,14 @@ pub struct DnsHandler<S> {
     // database.
     // TODO: check if there is a better way to spawn the refresh loop.
     zone_cache: Arc<ZoneCache>,
-    storage: Arc<S>,
+    storage: S,
     geoip_db: GeoLocator,
     metrics: Metrics,
 }
 
 impl<S> DnsHandler<S>
 where
-    S: Storage + Send + Sync + Unpin + 'static,
+    S: Storage + Clone + Send + Sync + Unpin + 'static,
 {
     /// Create a new DNS handler with the given [`Storage`].
     ///
@@ -55,7 +55,6 @@ where
     ) -> Self {
         let zones = Arc::new(Vec::<LowerName>::new());
         let zone_cache = Arc::new(AtomicPtr::new(Arc::into_raw(zones) as *mut _));
-        let storage = Arc::new(storage);
         let metrics = Metrics::new(instance_name);
         // Start the metric server forever
         if let Some(metric_addr) = metric_socket {
@@ -79,7 +78,7 @@ where
 #[async_trait::async_trait]
 impl<S> RequestHandler for DnsHandler<S>
 where
-    S: Storage + Send + Sync + Unpin + 'static,
+    S: Storage + Clone + Send + Sync + Unpin + 'static,
 {
     async fn handle_request<R: trust_dns_server::server::ResponseHandler>(
         &self,
@@ -109,7 +108,7 @@ where
 
 impl<S> DnsHandler<S>
 where
-    S: Storage + Send + Sync + Unpin,
+    S: Storage + Clone + Send + Sync + Unpin,
 {
     /// Handle a request query. This function does the following:
     ///
@@ -376,6 +375,7 @@ where
     /// Generates a future which continuously loads all know zones and caches them. This removes
     /// previously stored zones.
     fn zone_loader(&self) -> impl Future<Output = ()> {
+        trace!("Creating zone loader");
         let storage = self.storage.clone();
         let zone_cache = self.zone_cache.clone();
         let metrics = self.metrics.clone();
@@ -383,7 +383,9 @@ where
 
         async move {
             loop {
+                trace!("Waiting for zone loader tick");
                 interval.tick().await;
+                trace!("Refreshing zone cache");
                 // Create the new zone mapping;
                 let zones = match storage.zones().await {
                     Ok(zones) => zones,
@@ -392,6 +394,8 @@ where
                         continue;
                     }
                 };
+
+                trace!("Loaded {} zones", zones.len());
 
                 // Load existing cache. We don't increment the refcount here so a cleanup is
                 // triggered once this one goes out of scope, and the last available Arc from this

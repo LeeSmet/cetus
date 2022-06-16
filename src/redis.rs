@@ -150,14 +150,13 @@ impl Storage for RedisClusterClient {
     async fn add_record(
         &self,
         zone: &LowerName,
+        name: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        log::debug!("Adding record {:?}", record);
-        let record_name = LowerName::from(record.record.name());
         let record_type = record.record.record_type();
 
         let mut record_set = self
-            .lookup_records(zone, &record_name, record_type)
+            .lookup_records(zone, name, record_type)
             .await?
             .unwrap_or(vec![]);
 
@@ -165,11 +164,10 @@ impl Storage for RedisClusterClient {
         record_set.push(record);
         let new_record_set = serde_json::to_vec(&record_set)?;
 
-        log::trace!("record set: {:?}", new_record_set);
         Ok(self
             .client
             .hset::<_, _, (&str, &[u8])>(
-                format!("resource:{}:{}", zone, record_name),
+                format!("resource:{}:{}", zone, name),
                 (record_type.into(), &new_record_set),
             )
             .await?)
