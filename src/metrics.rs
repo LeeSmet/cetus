@@ -200,7 +200,11 @@ impl ZoneMetrics {
     fn unregister(self) {
         // This unwrap is safe as self.registry is the registry used to add the metrics
         self.registry
-            .unregister(Box::new(self.response_codes))
+            .unregister(Box::new(self.query_class))
+            .unwrap();
+        // This unwrap is safe as self.registry is the registry used to add the metrics
+        self.registry
+            .unregister(Box::new(self.record_types))
             .unwrap();
         // This unwrap is safe as self.registry is the registry used to add the metrics
         self.registry
@@ -208,7 +212,11 @@ impl ZoneMetrics {
             .unwrap();
         // This unwrap is safe as self.registry is the registry used to add the metrics
         self.registry
-            .unregister(Box::new(self.record_types))
+            .unregister(Box::new(self.response_codes))
+            .unwrap();
+        // This unwrap is safe as self.registry is the registry used to add the metrics
+        self.registry
+            .unregister(Box::new(self.country_queries))
             .unwrap();
     }
 }
