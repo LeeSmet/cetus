@@ -17,7 +17,7 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 log = "0.4"
 pretty_env_logger = "0.4"
-redis = { version = "0.21", features = ["cluster", "tokio-comp", "connection-manager"] }
+# redis = { version = "0.21", features = ["cluster", "tokio-comp", "connection-manager"] }
 redis_cluster_async = "0.7"
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
@@ -27,3 +27,4 @@ chashmap = "2.2"
 axum = { version = "0.5", features = ["http2"] }
 toml = "0.5"
 maxminddb = "0.23"
+fred = { version = "5.1", default-features = false, features = ["pool-prefer-active"] }
