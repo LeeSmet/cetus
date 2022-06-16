@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 use std::{error::Error, sync::Arc};
 use trust_dns_proto::rr::RecordType;
 use trust_dns_server::{client::rr::LowerName, proto::rr::Record};
@@ -63,7 +64,7 @@ where
     S: Storage + Send + Sync,
 {
     async fn zones(&self) -> Result<Vec<LowerName>, Box<dyn Error + Send + Sync>> {
-        self.zones().await
+        self.deref().zones().await
     }
 
     async fn lookup_records(
@@ -72,11 +73,11 @@ where
         zone: &LowerName,
         rtype: RecordType,
     ) -> Result<Option<Vec<StorageRecord>>, Box<dyn Error + Send + Sync>> {
-        self.lookup_records(name, zone, rtype).await
+        self.deref().lookup_records(name, zone, rtype).await
     }
 
     async fn add_zone(&self, zone: &LowerName) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.add_zone(zone).await
+        self.deref().add_zone(zone).await
     }
 
     async fn add_record(
@@ -84,6 +85,6 @@ where
         zone: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.add_record(zone, record).await
+        self.deref().add_record(zone, record).await
     }
 }
