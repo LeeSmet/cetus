@@ -139,7 +139,15 @@ pub async fn list_domain_records(
     if !zone.is_fqdn() {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Can only query storage records for fqdns",
+            "Can only query storage records for fqdn zones",
+        )
+            .into());
+    }
+
+    if !domain.is_fqdn() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Can only query storage records for fqdn domains",
         )
             .into());
     }
@@ -153,5 +161,32 @@ pub async fn list_domain_records(
                 error!("Failed to extract domain records: {}", err);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?,
+    ))
+}
+
+pub async fn list_zone_domains(
+    extract::Path(zone): extract::Path<Name>,
+    Extension(state): Extension<State>,
+) -> response::Result<response::Json<Vec<Name>>> {
+    if !zone.is_fqdn() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Can only query domains for fqdn zones",
+        )
+            .into());
+    }
+
+    Ok(response::Json(
+        state
+            .storage
+            .list_domains(&zone.into())
+            .await
+            .map_err(|err| {
+                error!("Failed to extract domain records: {}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .into_iter()
+            .map(Name::from)
+            .collect(),
     ))
 }

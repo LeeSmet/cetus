@@ -98,4 +98,11 @@ impl Storage for FSStorage {
     ) -> Result<Vec<StorageRecord>, Box<dyn std::error::Error + Send + Sync>> {
         todo!();
     }
+
+    async fn list_domains(
+        &self,
+        zone: &LowerName,
+    ) -> Result<Vec<LowerName>, Box<dyn std::error::Error + Send + Sync>> {
+        todo!();
+    }
 }

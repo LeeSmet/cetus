@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::{error::Error, sync::Arc};
-use trust_dns_proto::rr::RecordType;
+use trust_dns_proto::rr::{Name, RecordType};
 use trust_dns_server::{client::rr::LowerName, proto::rr::Record};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -64,6 +64,12 @@ pub trait Storage {
         zone: &LowerName,
         domain: &LowerName,
     ) -> Result<Vec<StorageRecord>, Box<dyn Error + Send + Sync>>;
+
+    /// List all available domains for a given zone.
+    async fn list_domains(
+        &self,
+        zone: &LowerName,
+    ) -> Result<Vec<LowerName>, Box<dyn Error + Send + Sync>>;
 }
 
 #[async_trait::async_trait]
@@ -103,5 +109,12 @@ where
         domain: &LowerName,
     ) -> Result<Vec<StorageRecord>, Box<dyn Error + Send + Sync>> {
         self.deref().list_records(zone, domain).await
+    }
+
+    async fn list_domains(
+        &self,
+        zone: &LowerName,
+    ) -> Result<Vec<LowerName>, Box<dyn Error + Send + Sync>> {
+        self.deref().list_domains(zone).await
     }
 }

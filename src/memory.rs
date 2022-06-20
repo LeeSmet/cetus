@@ -52,4 +52,14 @@ impl Storage for MemoryStorage {
     ) -> Result<Vec<StorageRecord>, Box<dyn std::error::Error + Send + Sync>> {
         unimplemented!();
     }
+
+    async fn list_domains(
+        &self,
+        zone: &trust_dns_server::client::rr::LowerName,
+    ) -> Result<
+        Vec<trust_dns_server::client::rr::LowerName>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
+        unimplemented!();
+    }
 }

@@ -188,4 +188,37 @@ impl Storage for RedisClusterClient {
             .filter_map(|jv| serde_json::from_slice(&jv).ok())
             .collect())
     }
+
+    async fn list_domains(
+        &self,
+        zone: &LowerName,
+    ) -> Result<Vec<LowerName>, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(self
+            .client
+            .scan_cluster(format!("zone:{}:*", zone), Some(10), Some(ScanType::String))
+            .filter_map(|scan_entry| async {
+                if let Ok(mut entry) = scan_entry {
+                    if let Some(results) = entry.take_results() {
+                        return Some(
+                            results
+                                .into_iter()
+                                .filter_map(|re| {
+                                    if let Some(raw_key) = re.as_str() {
+                                        LowerName::from_str(raw_key).ok()
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect(),
+                        );
+                    }
+                }
+                None
+            })
+            .collect::<Vec<Vec<_>>>()
+            .await
+            .into_iter()
+            .flatten()
+            .collect())
+    }
 }

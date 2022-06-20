@@ -23,6 +23,7 @@ where
     let shared_state = State { storage };
     let app = Router::new()
         .route("/zones", get(zone::list_zones))
+        .route("/zones/:zone", put(zone::list_zone_domains))
         .route("/zones/:zone", put(zone::add_zone))
         .route("/zones/:zone/:domain", get(zone::list_domain_records))
         .layer(Extension(shared_state));
