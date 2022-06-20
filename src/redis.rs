@@ -180,12 +180,13 @@ impl Storage for RedisClusterClient {
     ) -> Result<Vec<StorageRecord>, Box<dyn std::error::Error + Send + Sync>> {
         let encoded_records = self
             .client
-            .hgetall::<HashMap<String, Vec<u8>>, _>(format!("{}:{}", zone, domain))
+            .hgetall::<HashMap<String, Vec<u8>>, _>(format!("resource:{}:{}", zone, domain))
             .await?;
 
         Ok(encoded_records
             .into_values()
-            .filter_map(|jv| serde_json::from_slice(&jv).ok())
+            .filter_map::<Vec<_>, _>(|jv| serde_json::from_slice(&jv).ok())
+            .flatten()
             .collect())
     }
 
@@ -195,7 +196,11 @@ impl Storage for RedisClusterClient {
     ) -> Result<Vec<LowerName>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(self
             .client
-            .scan_cluster(format!("zone:{}:*", zone), Some(10), Some(ScanType::String))
+            .scan_cluster(
+                format!("resource:{}:*", zone),
+                Some(10),
+                Some(ScanType::Hash),
+            )
             .filter_map(|scan_entry| async {
                 if let Ok(mut entry) = scan_entry {
                     if let Some(results) = entry.take_results() {
@@ -204,7 +209,11 @@ impl Storage for RedisClusterClient {
                                 .into_iter()
                                 .filter_map(|re| {
                                     if let Some(raw_key) = re.as_str() {
-                                        LowerName::from_str(raw_key).ok()
+                                        if let Some(domain) = raw_key.split(':').nth(2) {
+                                            LowerName::from_str(domain).ok()
+                                        } else {
+                                            None
+                                        }
                                     } else {
                                         None
                                     }
