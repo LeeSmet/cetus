@@ -28,12 +28,10 @@ impl GeoLocator {
         Ok((
             country
                 .country
-                .map(|c| c.iso_code.map(|s| s.to_string()))
-                .flatten(),
+                .and_then(|c| c.iso_code.map(|s| s.to_string())),
             country
                 .continent
-                .map(|c| c.code.map(|s| s.to_string()))
-                .flatten(),
+                .and_then(|c| c.code.map(|s| s.to_string())),
         ))
     }
 }

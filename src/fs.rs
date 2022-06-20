@@ -77,31 +77,31 @@ impl Storage for FSStorage {
 
     async fn add_zone(
         &self,
-        zone: &LowerName,
+        _zone: &LowerName,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         todo!();
     }
 
     async fn add_record(
         &self,
-        zone: &LowerName,
-        domain: &LowerName,
-        record: StorageRecord,
+        _zone: &LowerName,
+        _domain: &LowerName,
+        _record: StorageRecord,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         todo!();
     }
 
     async fn list_records(
         &self,
-        zone: &LowerName,
-        domain: &LowerName,
+        _zone: &LowerName,
+        _domain: &LowerName,
     ) -> Result<Vec<StorageRecord>, Box<dyn std::error::Error + Send + Sync>> {
         todo!();
     }
 
     async fn list_domains(
         &self,
-        zone: &LowerName,
+        _zone: &LowerName,
     ) -> Result<Vec<LowerName>, Box<dyn std::error::Error + Send + Sync>> {
         todo!();
     }

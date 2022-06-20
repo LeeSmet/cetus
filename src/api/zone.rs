@@ -1,5 +1,5 @@
 use super::State;
-use crate::storage::{Storage, StorageRecord};
+use crate::storage::StorageRecord;
 use axum::{extract, http::StatusCode, response, Extension};
 use log::{error, trace};
 use serde::{Deserialize, Serialize};

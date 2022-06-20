@@ -1,14 +1,9 @@
-use futures_util::{join, stream, StreamExt};
-// use redis_cluster_async::{
-//     redis::{self, AsyncCommands},
-//     Client,
-// };
 use fred::{
     pool::RedisPool,
     prelude::*,
     types::{BackpressureConfig, PerformanceConfig, RespVersion, ScanType},
 };
-use serde::Deserialize;
+use futures_util::StreamExt;
 use trust_dns_server::client::rr::LowerName;
 
 use std::{collections::HashMap, net::SocketAddr, str::FromStr};
@@ -27,28 +22,33 @@ impl RedisClusterClient {
     ///
     /// This function will panic if an invalid configuration is passed
     pub fn new(username: Option<String>, password: Option<String>, addrs: &[SocketAddr]) -> Self {
-        let mut conf = RedisConfig::default();
-        conf.username = username;
-        conf.password = password;
-        conf.server = ServerConfig::Clustered {
-            hosts: addrs
-                .into_iter()
-                .map(|sa| (sa.ip().to_string(), sa.port()))
-                .collect(),
+        let performance = PerformanceConfig {
+            cluster_cache_update_delay_ms: 10,
+            max_command_attempts: 20,
+            backpressure: BackpressureConfig {
+                disable_auto_backpressure: false,
+                disable_backpressure_scaling: false,
+                min_sleep_duration_ms: 10,
+                max_in_flight_commands: 5000,
+            },
+            ..Default::default()
         };
-        conf.version = RespVersion::RESP2;
-        let mut perf = PerformanceConfig::default();
-        perf.cluster_cache_update_delay_ms = 10;
-        perf.max_command_attempts = 20;
-        perf.backpressure = BackpressureConfig {
-            disable_auto_backpressure: false,
-            disable_backpressure_scaling: false,
-            min_sleep_duration_ms: 10,
-            max_in_flight_commands: 5000,
+        let conf = RedisConfig {
+            username,
+            password,
+            performance,
+            version: RespVersion::RESP2,
+            server: ServerConfig::Clustered {
+                hosts: addrs
+                    .iter()
+                    .map(|sa| (sa.ip().to_string(), sa.port()))
+                    .collect(),
+            },
+            ..Default::default()
         };
         let client = RedisPool::new(conf, 10).expect("Valid pool config");
         let reconnect = ReconnectPolicy::new_constant(1_000, 10);
-        let conn_task = client.connect(Some(reconnect));
+        let _conn_task = client.connect(Some(reconnect));
         //tokio::spawn(conn_task);
         RedisClusterClient { client }
     }
@@ -74,7 +74,7 @@ impl Storage for RedisClusterClient {
         Box<dyn std::error::Error + Send + Sync>,
     > {
         log::trace!("Getting zones from redis cluster");
-        let mut scan_stream = self
+        let scan_stream = self
             .client
             .scan_cluster("zone:*", Some(10), Some(ScanType::String));
         // TODO: simplify this
@@ -158,7 +158,7 @@ impl Storage for RedisClusterClient {
         let mut record_set = self
             .lookup_records(zone, domain, record_type)
             .await?
-            .unwrap_or(vec![]);
+            .unwrap_or_default();
 
         // Add new record to the set
         record_set.push(record);

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::{error::Error, sync::Arc};
-use trust_dns_proto::rr::{Name, RecordType};
+use trust_dns_proto::rr::RecordType;
 use trust_dns_server::{client::rr::LowerName, proto::rr::Record};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
