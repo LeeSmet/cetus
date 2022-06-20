@@ -132,10 +132,10 @@ pub struct RecordList {
 
 /// List all records of a given domain.
 pub async fn list_domain_records(
-    extract::Path(zone): extract::Path<Name>,
-    extract::Path(domain): extract::Path<Name>,
+    extract::Path((zone, domain)): extract::Path<(Name, Name)>,
     Extension(state): Extension<State>,
 ) -> response::Result<response::Json<Vec<StorageRecord>>> {
+    trace!("Listing domain records for {} in zone {}", domain, zone);
     if !zone.is_fqdn() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -168,6 +168,7 @@ pub async fn list_zone_domains(
     extract::Path(zone): extract::Path<Name>,
     Extension(state): Extension<State>,
 ) -> response::Result<response::Json<Vec<Name>>> {
+    trace!("Listing zone domains in API for {}", zone);
     if !zone.is_fqdn() {
         return Err((
             StatusCode::BAD_REQUEST,
