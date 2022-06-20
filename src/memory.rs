@@ -21,7 +21,7 @@ impl Storage for MemoryStorage {
 
     async fn lookup_records(
         &self,
-        _name: &trust_dns_server::client::rr::LowerName,
+        _domain: &trust_dns_server::client::rr::LowerName,
         _zone: &trust_dns_server::client::rr::LowerName,
         _rtype: trust_dns_server::proto::rr::RecordType,
     ) -> Result<Option<Vec<crate::storage::StorageRecord>>, Box<dyn std::error::Error + Send + Sync>>
@@ -39,9 +39,17 @@ impl Storage for MemoryStorage {
     async fn add_record(
         &self,
         zone: &trust_dns_server::client::rr::LowerName,
-        name: &trust_dns_server::client::rr::LowerName,
+        domain: &trust_dns_server::client::rr::LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        unimplemented!();
+    }
+
+    async fn list_records(
+        &self,
+        zone: &trust_dns_server::client::rr::LowerName,
+        domain: &trust_dns_server::client::rr::LowerName,
+    ) -> Result<Vec<StorageRecord>, Box<dyn std::error::Error + Send + Sync>> {
         unimplemented!();
     }
 }

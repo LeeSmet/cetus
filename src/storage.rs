@@ -39,7 +39,7 @@ pub trait Storage {
     /// type must be [`Option::Some`] of an empty [`Vec`].
     async fn lookup_records(
         &self,
-        name: &LowerName,
+        domain: &LowerName,
         zone: &LowerName,
         rtype: RecordType,
     ) -> Result<Option<Vec<StorageRecord>>, Box<dyn Error + Send + Sync>>;
@@ -49,14 +49,21 @@ pub trait Storage {
     /// need to be added manually after this.
     async fn add_zone(&self, zone: &LowerName) -> Result<(), Box<dyn Error + Send + Sync>>;
 
-    /// Store a record in a zone. Callers should always verify that the zone exists before
+    /// Store a record in a domain in a zone. Callers should always verify that the zone exists before
     /// submitting a record.
     async fn add_record(
         &self,
         zone: &LowerName,
-        name: &LowerName,
+        domain: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn Error + Send + Sync>>;
+
+    /// List all records for a given domain in a zone.
+    async fn list_records(
+        &self,
+        zone: &LowerName,
+        domain: &LowerName,
+    ) -> Result<Vec<StorageRecord>, Box<dyn Error + Send + Sync>>;
 }
 
 #[async_trait::async_trait]
@@ -70,11 +77,11 @@ where
 
     async fn lookup_records(
         &self,
-        name: &LowerName,
+        domain: &LowerName,
         zone: &LowerName,
         rtype: RecordType,
     ) -> Result<Option<Vec<StorageRecord>>, Box<dyn Error + Send + Sync>> {
-        self.deref().lookup_records(name, zone, rtype).await
+        self.deref().lookup_records(domain, zone, rtype).await
     }
 
     async fn add_zone(&self, zone: &LowerName) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -84,9 +91,17 @@ where
     async fn add_record(
         &self,
         zone: &LowerName,
-        name: &LowerName,
+        domain: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.deref().add_record(zone, name, record).await
+        self.deref().add_record(zone, domain, record).await
+    }
+
+    async fn list_records(
+        &self,
+        zone: &LowerName,
+        domain: &LowerName,
+    ) -> Result<Vec<StorageRecord>, Box<dyn Error + Send + Sync>> {
+        self.deref().list_records(zone, domain).await
     }
 }

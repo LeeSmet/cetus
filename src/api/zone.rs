@@ -2,10 +2,10 @@ use super::State;
 use crate::storage::{Storage, StorageRecord};
 use axum::{extract, http::StatusCode, response, Extension};
 use log::{error, trace};
+use serde::{Deserialize, Serialize};
 use trust_dns_proto::rr::{rdata::SOA, Name, RData, Record};
 use trust_dns_server::client::rr::LowerName;
 
-use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct AddZone {
     // primary dns name
@@ -123,4 +123,35 @@ pub async fn add_zone(
     }
 
     Ok(StatusCode::CREATED)
+}
+
+#[derive(Serialize)]
+pub struct RecordList {
+    records: Vec<StorageRecord>,
+}
+
+/// List all records of a given domain.
+pub async fn list_domain_records(
+    extract::Path(zone): extract::Path<Name>,
+    extract::Path(domain): extract::Path<Name>,
+    Extension(state): Extension<State>,
+) -> response::Result<response::Json<Vec<StorageRecord>>> {
+    if !zone.is_fqdn() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Can only query storage records for fqdns",
+        )
+            .into());
+    }
+
+    Ok(response::Json(
+        state
+            .storage
+            .list_records(&zone.into(), &domain.into())
+            .await
+            .map_err(|err| {
+                error!("Failed to extract domain records: {}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?,
+    ))
 }

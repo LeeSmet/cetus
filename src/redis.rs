@@ -11,7 +11,7 @@ use fred::{
 use serde::Deserialize;
 use trust_dns_server::client::rr::LowerName;
 
-use std::{net::SocketAddr, str::FromStr};
+use std::{collections::HashMap, net::SocketAddr, str::FromStr};
 
 use crate::storage::{Storage, StorageRecord};
 
@@ -120,14 +120,14 @@ impl Storage for RedisClusterClient {
 
     async fn lookup_records(
         &self,
-        name: &trust_dns_server::client::rr::LowerName,
-        zone: &trust_dns_server::client::rr::LowerName,
+        domain: &LowerName,
+        zone: &LowerName,
         rtype: trust_dns_proto::rr::RecordType,
     ) -> Result<Option<Vec<crate::storage::StorageRecord>>, Box<dyn std::error::Error + Send + Sync>>
     {
         let data = self
             .client
-            .hget::<Vec<_>, _, &str>(format!("resource:{}:{}", zone, name), rtype.into())
+            .hget::<Vec<_>, _, &str>(format!("resource:{}:{}", zone, domain), rtype.into())
             .await?;
 
         if data.is_empty() {
@@ -150,13 +150,13 @@ impl Storage for RedisClusterClient {
     async fn add_record(
         &self,
         zone: &LowerName,
-        name: &LowerName,
+        domain: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let record_type = record.record.record_type();
 
         let mut record_set = self
-            .lookup_records(zone, name, record_type)
+            .lookup_records(zone, domain, record_type)
             .await?
             .unwrap_or(vec![]);
 
@@ -167,9 +167,25 @@ impl Storage for RedisClusterClient {
         Ok(self
             .client
             .hset::<_, _, (&str, &[u8])>(
-                format!("resource:{}:{}", zone, name),
+                format!("resource:{}:{}", zone, domain),
                 (record_type.into(), &new_record_set),
             )
             .await?)
+    }
+
+    async fn list_records(
+        &self,
+        zone: &LowerName,
+        domain: &LowerName,
+    ) -> Result<Vec<StorageRecord>, Box<dyn std::error::Error + Send + Sync>> {
+        let encoded_records = self
+            .client
+            .hgetall::<HashMap<String, Vec<u8>>, _>(format!("{}:{}", zone, domain))
+            .await?;
+
+        Ok(encoded_records
+            .into_values()
+            .filter_map(|jv| serde_json::from_slice(&jv).ok())
+            .collect())
     }
 }

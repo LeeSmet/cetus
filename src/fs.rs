@@ -48,14 +48,14 @@ impl Storage for FSStorage {
 
     async fn lookup_records(
         &self,
-        name: &LowerName,
+        domain: &LowerName,
         zone: &LowerName,
         rtype: trust_dns_proto::rr::RecordType,
     ) -> Result<Option<Vec<crate::storage::StorageRecord>>, Box<dyn std::error::Error + Send + Sync>>
     {
         let mut path = self.base.clone();
         path.push(zone.to_string());
-        path.push(name.to_string());
+        path.push(domain.to_string());
 
         // First check if the dir exists, per the contract of this function we should return
         // Ok(None) if it does not.
@@ -85,9 +85,17 @@ impl Storage for FSStorage {
     async fn add_record(
         &self,
         zone: &LowerName,
-        name: &LowerName,
+        domain: &LowerName,
         record: StorageRecord,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        todo!();
+    }
+
+    async fn list_records(
+        &self,
+        zone: &LowerName,
+        domain: &LowerName,
+    ) -> Result<Vec<StorageRecord>, Box<dyn std::error::Error + Send + Sync>> {
         todo!();
     }
 }
