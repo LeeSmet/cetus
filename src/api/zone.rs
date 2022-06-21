@@ -81,16 +81,16 @@ pub async fn add_zone(
         data.minimum,
     );
 
-    let soa_record = Record::from_rdata(zone, data.ttl, RData::SOA(soa));
-
     let ns_records = data
         .nameservers
         .into_iter()
         .map(|ns| {
             let rdata = RData::NS(ns.name.clone());
-            Record::from_rdata(ns.name, ns.ttl, rdata)
+            Record::from_rdata(zone.clone(), ns.ttl, rdata)
         })
         .collect::<Vec<_>>();
+
+    let soa_record = Record::from_rdata(zone, data.ttl, RData::SOA(soa));
 
     log::trace!("NS records {:?}", ns_records);
 
