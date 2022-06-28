@@ -11,6 +11,7 @@ pub struct FSStorage {
 }
 
 impl FSStorage {
+    #[allow(dead_code)]
     pub fn new(base: PathBuf) -> Self {
         Self { base }
     }

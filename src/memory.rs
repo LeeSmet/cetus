@@ -3,6 +3,7 @@ use crate::storage::{Storage, StorageRecord};
 pub struct MemoryStorage {}
 
 impl MemoryStorage {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         MemoryStorage {}
     }
