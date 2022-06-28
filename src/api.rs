@@ -1,7 +1,11 @@
 use crate::storage::Storage;
-use axum::{routing::get, Extension, Router};
+use axum::{
+    routing::{get, put},
+    Extension, Router,
+};
 use std::{net::SocketAddr, sync::Arc};
 
+mod a;
 mod zone;
 
 /// State for all API handlers.
@@ -25,6 +29,7 @@ where
             get(zone::list_zone_domains).put(zone::add_zone),
         )
         .route("/zones/:zone/:domain", get(zone::list_domain_records))
+        .route("/zones/:zone/:domain/a", put(a::add_a_record))
         .layer(Extension(shared_state));
     tokio::spawn(async move {
         axum::Server::bind(&listen_address)
