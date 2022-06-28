@@ -1,7 +1,13 @@
 instance_name = "cetus_primary"
 metric_listener = "0.0.0.0:9000"
 
+api_listener = "127.0.0.1:8080"
+
 geoip_db_location = "./geo/GeoLite2-Country.mmdb"
+
+[redis_config]
+password = "SomePass"
+node_addresses = ["172.30.0.1:7000"]
 
 udp_sockets = ["0.0.0.0:5353", "[::]:5353"]
 
