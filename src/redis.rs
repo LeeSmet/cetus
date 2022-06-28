@@ -156,7 +156,7 @@ impl Storage for RedisClusterClient {
         let record_type = record.record.record_type();
 
         let mut record_set = self
-            .lookup_records(zone, domain, record_type)
+            .lookup_records(domain, zone, record_type)
             .await?
             .unwrap_or_default();
 
