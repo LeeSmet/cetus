@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 
 use super::State;
 use crate::storage::StorageRecord;
@@ -10,7 +10,7 @@ use trust_dns_server::client::rr::LowerName;
 
 #[derive(Deserialize)]
 pub struct AddARecord {
-    data: Ipv4Addr,
+    data: Ipv6Addr,
     ttl: u32,
 }
 
@@ -35,7 +35,7 @@ pub async fn add_record(
             .into());
     }
 
-    let record = Record::from_rdata(domain.clone(), data.ttl, RData::A(data.data));
+    let record = Record::from_rdata(domain.clone(), data.ttl, RData::AAAA(data.data));
 
     state
         .storage
@@ -46,7 +46,7 @@ pub async fn add_record(
         )
         .await
         .map_err(|err| {
-            error!("Failed to insert A record: {}", err);
+            error!("Failed to insert AAAA record: {}", err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
