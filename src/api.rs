@@ -7,6 +7,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 mod a;
 mod aaaa;
+mod cname;
 mod mx;
 mod zone;
 
@@ -34,6 +35,7 @@ where
         .route("/zones/:zone/:domain/a", put(a::add_record))
         .route("/zones/:zone/:domain/aaaa", put(aaaa::add_record))
         .route("/zones/:zone/:domain/mx", put(mx::add_record))
+        .route("/zones/:zone/:domain/mx", put(cname::add_record))
         .layer(Extension(shared_state));
     tokio::spawn(async move {
         axum::Server::bind(&listen_address)
