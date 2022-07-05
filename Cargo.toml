@@ -28,3 +28,4 @@ axum = { version = "0.5", features = ["http2"] }
 toml = "0.5"
 maxminddb = "0.23"
 fred = { version = "5.1", default-features = false, features = ["pool-prefer-active"] }
+faster-hex = "0.6"

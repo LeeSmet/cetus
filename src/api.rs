@@ -9,6 +9,7 @@ mod a;
 mod aaaa;
 mod cname;
 mod mx;
+mod txt;
 mod zone;
 
 /// State for all API handlers.
@@ -35,7 +36,8 @@ where
         .route("/zones/:zone/:domain/a", put(a::add_record))
         .route("/zones/:zone/:domain/aaaa", put(aaaa::add_record))
         .route("/zones/:zone/:domain/mx", put(mx::add_record))
-        .route("/zones/:zone/:domain/mx", put(cname::add_record))
+        .route("/zones/:zone/:domain/cname", put(cname::add_record))
+        .route("/zones/:zone/:domain/txt", put(txt::add_record))
         .layer(Extension(shared_state));
     tokio::spawn(async move {
         axum::Server::bind(&listen_address)
