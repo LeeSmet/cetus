@@ -45,7 +45,7 @@ pub async fn add_record(
             )
                 .into());
         }
-        let mut dst = Vec::with_capacity(section.len() / 2);
+        let mut dst = vec![0; section.len() / 2];
         faster_hex::hex_decode(section.as_bytes(), &mut dst)
             .map_err(|_| (StatusCode::BAD_REQUEST, "TXT section must be valid hex"))?;
         decoded_sections.push(dst);
