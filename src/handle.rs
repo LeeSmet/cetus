@@ -182,6 +182,7 @@ where
         // Mark the server as authorative
         let mut header = *request.header();
         header.set_authoritative(true);
+        header.set_message_type(MessageType::Response);
 
         trace!("Getting zone SOA for {}", zone_name);
         let soas = match self
@@ -325,7 +326,9 @@ where
         code: ResponseCode,
     ) -> ResponseInfo {
         let response_builder = MessageResponseBuilder::from_message_request(request);
-        let msg = response_builder.error_msg(request.header(), code);
+        let mut header = *request.header();
+        header.set_message_type(MessageType::Response);
+        let msg = response_builder.error_msg(&header, code);
         return match response_handle.send_response(msg).await {
             Ok(info) => info,
             Err(ioe) => {
