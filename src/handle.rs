@@ -170,7 +170,7 @@ where
         };
         if let Some(ref country) = country {
             self.metrics
-                .increment_zone_country_query(zone_name, &*country);
+                .increment_zone_country_query(zone_name, country);
         }
         trace!(
             "Request source {} from country {:?} in {:?}",
@@ -307,7 +307,7 @@ where
             }
         };
         if let Some(ref country) = country {
-            self.metrics.increment_unknown_zone_country_query(&*country);
+            self.metrics.increment_unknown_zone_country_query(country);
         }
         self.metrics
             .increment_unknown_zone_response_code(ResponseCode::Refused);
