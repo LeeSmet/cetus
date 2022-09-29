@@ -4,6 +4,7 @@ use fred::{
     types::{BackpressureConfig, PerformanceConfig, RespVersion, ScanType},
 };
 use futures_util::StreamExt;
+use log::error;
 use trust_dns_server::client::rr::LowerName;
 
 use std::{collections::HashMap, net::SocketAddr, str::FromStr};
@@ -125,15 +126,28 @@ impl Storage for RedisClusterClient {
         rtype: trust_dns_proto::rr::RecordType,
     ) -> Result<Option<Vec<crate::storage::StorageRecord>>, Box<dyn std::error::Error + Send + Sync>>
     {
+        // Use HGETALL here and then manually find the correct value instead of using HGET + key.
+        // This way we at least properly return data if an entry for the domain exists but is not
+        // of the correct type. Note that this is bad design, as business logic is now encoded in
+        // the storge layer.
         let data = self
             .client
-            .hget::<Vec<_>, _, &str>(format!("resource:{}:{}", zone, domain), rtype.into())
+            .hgetall::<Vec<Vec<_>>, _>(format!("resource:{}:{}", zone, domain))
             .await?;
 
         if data.is_empty() {
             Ok(None)
+        } else if data.len() % 2 != 0 {
+            error!("HGETAL response size is not a multiple of 2");
+            Ok(None)
         } else {
-            Ok(Some(serde_json::from_slice(&data)?))
+            for chunk in data.chunks_exact(2) {
+                // TODO: take ownership here so we can get rid of the clone
+                if String::from_utf8(chunk[0].clone())? == rtype.to_string() {
+                    return Ok(Some(serde_json::from_slice(&chunk[1])?));
+                }
+            }
+            Ok(Some(vec![]))
         }
     }
 
